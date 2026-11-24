@@ -1,26 +1,193 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
+/*
+ * LL design tokens. Values come straight from the "LL Exam Question Screens" design.
+ * Pastel tiles come in pairs: a soft background and the ink colour that sits on it.
+ */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
+
+  /* surfaces + text */
+  --color-canvas: #fbfaf8;
+  --color-paper: #f7f5f1;
+  --color-chip: #f4f2ee;
+  --color-ink: #1f2433;
+  --color-ink-2: #3b4050;
+  --color-muted: #5e6372;
+  --color-subtle: #8a8f9c;
+  --color-line: #ece7df;
+  --color-line-input: #ece8e2;
+  --color-line-header: #eeeae4;
+  --color-dot: #e6e0d6;
+
+  /* brand green */
+  --color-brand: #015746;
+  --color-brand-dark: #01463a;
+  --color-brand-mid: #2c5e52;
+  --color-brand-tint: #e3f1ec;
+  --color-brand-soft: #eaf5f1;
+  --color-brand-ring: #cde6dd;
+
+  /* pastel pairs, one per question kind plus status colours */
+  --color-mint: #ddf7ea;
+  --color-mint-ink: #187a4a;
+  --color-mint-deep: #11603a;
+  --color-sky: #e3f2ff;
+  --color-sky-ink: #1e62b8;
+  --color-sky-deep: #174f95;
+  --color-lilac: #efeaff;
+  --color-lilac-ink: #5236d6;
+  --color-peach: #ffe9dc;
+  --color-peach-ink: #a3420f;
+  --color-peach-soft: #fff4ec;
+  --color-peach-mid: #ffe2cf;
+  --color-peach-deep: #7a2e08;
+  --color-peach-text: #6b3416;
+  --color-peach-bar: #c2541c;
+  --color-amber: #fff1cc;
+  --color-amber-ink: #8f5a00;
+  --color-amber-line: #f2b53a;
+  --color-amber-soft: #fffbef;
+  --color-rose: #fde6e1;
+  --color-rose-ink: #a1301a;
+  --color-scrim: #1f2433;
 }
 
-@media (prefers-color-scheme: dark) {
+/*
+ * Everything that sets a plain element style lives in a layer, so Tailwind
+ * utilities (which sit in a later layer) always win over it.
+ */
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: light;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-weight: 500;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  a {
+    color: var(--color-brand);
+  }
+  a:hover {
+    color: var(--color-brand-dark);
+  }
+
+  /* Visible keyboard focus everywhere, without ringing mouse clicks. */
+  :focus-visible {
+    outline: 3px solid var(--color-brand-ring);
+    outline-offset: 2px;
+  }
+
+  body:has(dialog[open]) {
+    overflow: hidden;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* Warm paper with a dot grid, used behind every signed-in screen. */
+  .bg-dotgrid {
+    background-color: var(--color-canvas);
+    background-image: radial-gradient(
+      var(--color-dot) 1.1px,
+      transparent 1.1px
+    );
+    background-size: 22px 22px;
+  }
+
+  /* Brand squiggle on the main sign-in button. */
+  .bg-squiggly {
+    background-image: url("/squiggly.svg");
+    background-repeat: repeat;
+    background-size: 360px auto;
+    background-position: left;
+  }
+
+  /* Hide scrollbars on swipeable strips. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Modal / bottom sheet, built on a native <dialog> (focus trap + Esc for free). */
+  .ll-dialog {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    max-width: none;
+    max-height: none;
+    color: inherit;
+    overflow: visible;
+  }
+  .ll-dialog::backdrop {
+    background: rgb(31 36 51 / 0.55);
+    animation: ll-fade 0.18s ease-out;
+  }
+  .ll-dialog[open] {
+    animation: ll-pop 0.2s ease-out;
+  }
+  .ll-dialog.ll-sheet[open] {
+    animation: ll-slide-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+@keyframes ll-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes ll-pop {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes ll-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
