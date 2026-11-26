@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, WifiOff } from "lucide-react";
 import { api, toApiError, type ApiError } from "@/lib/api";
-import type { AttemptState } from "@/lib/api-types";
+import type { AttemptState, ClockInfo } from "@/lib/api-types";
+import { clearAttemptCache } from "@/lib/attempt-cache";
 import { useMediaQuery } from "@/lib/hooks/useMediaQuery";
+import { useKeyboardNudge } from "@/lib/hooks/useKeyboardNudge";
 import { useOnline } from "@/lib/hooks/useOnline";
 import { useServerClock } from "@/lib/hooks/useServerClock";
 import { useViolationGuard } from "@/lib/hooks/useViolationGuard";
@@ -19,7 +21,7 @@ import { useAutosave } from "@/components/student/exam/useAutosave";
 import { Button, ErrorState } from "@/components/ui";
 
 /** The running exam. Everything a student does between "Start" and "Submit" lives here. */
-export function ExamSession({ initial }: { initial: AttemptState }) {
+export function ExamSession({ initial, fromCache = false }: { initial: AttemptState; fromCache?: boolean }) {
   const router = useRouter();
   const { attemptId, questions, maxViolations: max } = initial;
   const online = useOnline();
@@ -52,7 +54,69 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
     [goSubmitted],
   );
 
-  const autosave = useAutosave({ attemptId, initial: initial.answers, onSync: sync, onFatal: handleFatal });
+  // Loaded from the copy on this device because the server couldn't be reached: keep trying to
+  // reach it, and say so until it answers.
+  const [usingCache, setUsingCache] = useState(fromCache);
+  const onSync = useCallback(
+    (info: { serverNow: string; deadlineAt: string }) => {
+      sync(info);
+      setUsingCache(false);
+    },
+    [sync],
+  );
+  // Ask the server for the real time. Used when the student comes back to the tab (a phone that
+  // slept or a backgrounded tab can leave the countdown behind) and as a slow background check.
+  const resync = useCallback(async (): Promise<ClockInfo | null> => {
+    try {
+      const info = await api.student.clock(attemptId);
+      if (info.status !== "in_progress") {
+        clearAttemptCache(attemptId);
+        goSubmitted();
+        return info;
+      }
+      onSync(info);
+      return info;
+    } catch {
+      return null; // offline or a hiccup: keep counting locally
+    }
+  }, [attemptId, goSubmitted, onSync]);
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void resync();
+    };
+    const onPageShow = () => void resync();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("online", onPageShow);
+    const slow = window.setInterval(() => {
+      if (document.visibilityState === "visible") void resync();
+    }, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("online", onPageShow);
+      window.clearInterval(slow);
+    };
+  }, [resync]);
+
+  useEffect(() => {
+    if (!usingCache) return;
+    const probe = () => {
+      api.student
+        .attempt(attemptId)
+        .then((fresh) => onSync({ serverNow: fresh.serverNow, deadlineAt: fresh.deadlineAt }))
+        .catch(() => undefined);
+    };
+    const id = window.setInterval(probe, 4000);
+    window.addEventListener("online", probe);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("online", probe);
+    };
+  }, [usingCache, attemptId, onSync]);
+
+  const autosave = useAutosave({ attemptId, initial: initial.answers, onSync, onFatal: handleFatal });
   const { answers, flushNow, finish } = autosave;
   const tally = useMemo(() => computeTally(questions, answers), [questions, answers]);
 
@@ -66,12 +130,17 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
   const [sheet, setSheet] = useState<null | "list" | "review">(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const go = useCallback((index: number) => {
-    setCur(index);
-    setView("question");
-    setSheet(null);
-    window.scrollTo({ top: 0 });
-  }, []);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const go = useCallback(
+    (index: number) => {
+      setDirection(index >= cur ? 1 : -1);
+      setCur(index);
+      setView("question");
+      setSheet(null);
+      window.scrollTo({ top: 0 });
+    },
+    [cur],
+  );
 
   const question = questions[cur];
   const isLast = cur === questions.length - 1;
@@ -126,9 +195,16 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
     [attemptId, finish, flushNow, goSubmitted],
   );
 
+  // The countdown hit zero. Before submitting, ask the server: if the local clock was wrong and time
+  // really remains, correct the timer instead. If the server can't be reached, submit anyway.
   useEffect(() => {
-    if (clock.expired) void submit("timeout");
-  }, [clock.expired, submit]);
+    if (!clock.expired) return;
+    void (async () => {
+      const info = await resync();
+      if (info && info.status === "in_progress" && Date.parse(info.deadlineAt) - Date.parse(info.serverNow) > 1500) return;
+      void submit("timeout");
+    })();
+  }, [clock.expired, resync, submit]);
 
   /* -------------------------------------------------------------- violations */
   const [violations, setViolations] = useState(initial.violationCount);
@@ -136,6 +212,7 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
 
   const reportViolation = useCallback(
     (kind: "hidden" | "blur") => {
+      if (api.dev.isViolationsDisabled()) return; // demo tools switch
       // Warn straight away; the server count catches up as soon as the request lands.
       setViolations((v) => v + 1);
       setWarning(true);
@@ -162,6 +239,7 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
   );
 
   useViolationGuard(!finishing && !fatal, reportViolation);
+  useKeyboardNudge(); // keeps the fixed Prev/Next bar tappable after the keyboard closes
 
   const finishingReason = finishing ?? (violations >= max ? "violations" : null);
 
@@ -180,7 +258,7 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
     );
   }
 
-  const offline = !online || autosave.status === "error";
+  const offline = !online || autosave.status === "error" || usingCache;
   const nextLabel = isLast ? "Review answers" : "Next question";
 
   return (
@@ -189,12 +267,12 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
         title={initial.title}
         subtitle={initial.subtitle}
         saveStatus={autosave.status}
-        online={online}
+        online={online && !usingCache}
         remainingSec={clock.remainingSec}
         questions={questions}
         answers={answers}
         currentId={question.id}
-        tally={tally}
+        onGo={go}
         onOpenSheet={() => setSheet("list")}
       />
 
@@ -231,6 +309,7 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
                 answer={answers[question.id]}
                 onChange={(value, immediate) => autosave.setResponse(question.id, value, immediate)}
                 onToggleFlag={() => autosave.toggleFlag(question.id, !answers[question.id]?.flagged)}
+                direction={direction}
               />
               <div className="mt-5 hidden items-center justify-between lg:flex">
                 <Button variant="secondary" onClick={prev} disabled={cur === 0}>
@@ -276,7 +355,6 @@ export function ExamSession({ initial }: { initial: AttemptState }) {
         questions={questions}
         answers={answers}
         currentId={question.id}
-        tally={tally}
         remainingSec={clock.remainingSec}
         onGo={go}
         onSubmit={() => {

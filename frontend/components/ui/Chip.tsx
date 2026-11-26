@@ -2,10 +2,11 @@ import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 const tones = {
-  brand: "bg-brand-tint text-brand-dark",
+  brand: "bg-secondary-soft text-secondary-dark",
   mint: "bg-mint text-mint-deep",
   sky: "bg-sky text-sky-deep",
   lilac: "bg-lilac text-lilac-ink",
+  pink: "bg-pink text-pink-ink",
   peach: "bg-peach text-peach-ink",
   amber: "bg-amber text-amber-ink",
   rose: "bg-rose text-rose-ink",

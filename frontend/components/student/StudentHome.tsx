@@ -6,20 +6,10 @@ import { api } from "@/lib/api";
 import type { ExamCard, ResultSummary, StudentHome as StudentHomeData } from "@/lib/api-types";
 import { useAsync } from "@/lib/hooks/useAsync";
 import { KIND_META, KIND_ORDER } from "@/lib/question-kinds";
-import type { QuestionKind } from "@/lib/types";
 import { plural } from "@/lib/utils";
 import { AccountButton, StudentShell } from "@/components/student/StudentShell";
 import { LiveClock } from "@/components/student/LiveClock";
 import { ButtonLink, Card, Chip, EmptyState, ErrorState, GradeTile, Skeleton } from "@/components/ui";
-
-const inlineKind: Record<QuestionKind, string> = {
-  mcq: "multiple choice",
-  true_false: "true or false",
-  fill_blank: "fill in the blank",
-  written: "written",
-};
-
-const kindChipTone = { mcq: "lilac", true_false: "sky", fill_blank: "mint", written: "peach" } as const;
 
 export function StudentHomeScreen() {
   const { data, error, loading, reload, refresh } = useAsync(() => api.student.home(), []);
@@ -108,7 +98,7 @@ function OpenExamCard({ card }: { card: ExamCard }) {
         <span className="ml-1 text-[13px] font-extrabold text-muted">{plural(kinds.length, "question type")}</span>
       </div>
 
-      {/* desktop: facts and a breakdown of what's inside */}
+      {/* desktop: the key facts */}
       <div className="hidden flex-wrap gap-2.5 md:flex">
         <Chip tone="neutral" size="lg" className="h-[38px] px-3.5 text-sm font-extrabold">
           <Clock className="size-4" strokeWidth={2.5} aria-hidden />
@@ -121,15 +111,6 @@ function OpenExamCard({ card }: { card: ExamCard }) {
           {card.totalMarks} marks
         </Chip>
       </div>
-      <div className="hidden flex-wrap items-center gap-2 md:flex">
-        <span className="mr-1 text-[13px] font-extrabold text-muted">Inside:</span>
-        {kinds.map((k) => (
-          <Chip key={k} tone={kindChipTone[k]} size="lg" className="font-extrabold">
-            {card.kindCounts[k]} {inlineKind[k]}
-          </Chip>
-        ))}
-      </div>
-
       <ButtonLink href={`/student/exams/${card.sessionId}`} block className="md:w-fit md:self-start md:px-7">
         Get started <ArrowRight className="size-5" aria-hidden />
       </ButtonLink>

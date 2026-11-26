@@ -2,19 +2,44 @@
 
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { api } from "@/lib/api";
+import { api, toApiError } from "@/lib/api";
+import type { AttemptState } from "@/lib/api-types";
+import { clearAttemptCache, loadAttemptCache, saveAttemptCache } from "@/lib/attempt-cache";
 import { useAsync } from "@/lib/hooks/useAsync";
 import { ExamSession } from "@/components/student/exam/ExamSession";
 import { ErrorState, Skeleton } from "@/components/ui";
 
-/** Loads the attempt, then hands over to the running exam. Anything not in progress goes to "submitted". */
+interface Loaded {
+  state: AttemptState;
+  /** True when the server couldn't be reached and the copy kept on this device was used. */
+  fromCache: boolean;
+}
+
+/**
+ * Loads the attempt, then hands over to the running exam. If the connection is down it falls
+ * back to the copy kept on the device, so a reload mid-exam doesn't lock the student out.
+ * Anything not in progress goes to "submitted".
+ */
 export function ExamRunner() {
   const params = useParams<{ attemptId: string }>();
   const attemptId = Number(params.attemptId);
   const router = useRouter();
-  const { data, error, loading, reload } = useAsync(() => api.student.attempt(attemptId), [attemptId]);
 
-  const finished = data != null && data.status !== "in_progress";
+  const { data, error, loading, reload } = useAsync<Loaded>(async () => {
+    try {
+      const state = await api.student.attempt(attemptId);
+      if (state.status === "in_progress") saveAttemptCache(state);
+      else clearAttemptCache(attemptId);
+      return { state, fromCache: false };
+    } catch (e) {
+      const err = toApiError(e);
+      const cached = err.code === "network" ? loadAttemptCache(attemptId) : null;
+      if (cached) return { state: cached, fromCache: true };
+      throw err;
+    }
+  }, [attemptId]);
+
+  const finished = data != null && data.state.status !== "in_progress";
 
   useEffect(() => {
     if (finished) router.replace(`/student/attempts/${attemptId}/submitted`);
@@ -29,7 +54,7 @@ export function ExamRunner() {
   }
   if (loading || !data || finished) return <ExamSkeleton />;
 
-  return <ExamSession initial={data} />;
+  return <ExamSession initial={data.state} fromCache={data.fromCache} />;
 }
 
 function ExamSkeleton() {

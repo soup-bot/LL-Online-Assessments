@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes, type ReactNode, type TextareaHTML
 import { cn } from "@/lib/utils";
 
 const field =
-  "w-full border-2 border-line-input bg-white font-semibold outline-none transition placeholder:font-medium placeholder:text-subtle focus:border-brand focus:ring-4 focus:ring-brand-ring aria-[invalid=true]:border-rose-ink";
+  "w-full border-2 border-line-input bg-white font-semibold outline-none transition placeholder:font-medium placeholder:text-subtle focus:border-secondary focus:ring-4 focus:ring-secondary-ring aria-[invalid=true]:border-rose-ink";
 
 /** Pill-shaped text input from the design. */
 export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function TextInput(

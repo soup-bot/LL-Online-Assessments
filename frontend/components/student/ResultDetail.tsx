@@ -1,20 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ArrowLeft, ChevronDown } from "lucide-react";
-import { motion } from "motion/react";
+import { animate, motion, useMotionValue, useReducedMotion, useTransform, type MotionValue } from "motion/react";
 import { api } from "@/lib/api";
 import type { ResultDetail, ResultQuestion } from "@/lib/api-types";
-import { GRADE_BANDS, marksToNextGrade } from "@/lib/grading";
+import { GRADE_BANDS, marksToNextGrade, type Grade } from "@/lib/grading";
 import { useAsync } from "@/lib/hooks/useAsync";
 import { KIND_META } from "@/lib/question-kinds";
 import { cn, plural } from "@/lib/utils";
 import { StudentShell } from "@/components/student/StudentShell";
-import { Card, ErrorState, GradeTile, ProgressBar, Skeleton } from "@/components/ui";
+import { Card, ErrorState, GradeTile, Skeleton, gradeBg, gradeTintBg } from "@/components/ui";
 
-const ticks = GRADE_BANDS.filter((b) => b.min > 0);
 
 function listPositions(nums: number[]): string {
   const labels = nums.map((n) => `Q${n}`);
@@ -68,7 +67,7 @@ function Content({ data }: { data: ResultDetail }) {
               <GradeTile grade={data.grade} size="xl" className="hidden md:grid" />
             </motion.div>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5 md:min-w-[260px] md:gap-2.5">
-              <p className="text-xs font-extrabold text-brand md:text-sm">{data.title}</p>
+              <p className="text-xs font-extrabold text-secondary md:text-sm">{data.title}</p>
               <p className="flex items-baseline gap-3">
                 <span className="text-[32px] font-black leading-tight md:text-[44px]">
                   {data.score} / {data.total}
@@ -79,14 +78,7 @@ function Content({ data }: { data: ResultDetail }) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <ProgressBar value={data.percent} ticks={ticks.map((t) => t.min)} className="h-3 md:h-3.5" label={`Score ${data.percent}%`} />
-            <div aria-hidden className="relative hidden h-4 text-xs font-extrabold text-muted md:block">
-              {ticks.map((t) => (
-                <span key={t.grade} className="absolute -translate-x-1/2" style={{ left: `${t.min}%` }}>
-                  {t.grade}
-                </span>
-              ))}
-            </div>
+            <ScoreBar percent={data.percent} grade={data.grade} />
           </div>
 
           <div className="flex flex-col gap-1 text-[13px] font-bold text-ink-2 md:text-sm">
@@ -133,6 +125,56 @@ function Content({ data }: { data: ResultDetail }) {
   );
 }
 
+/** Grade bands in the order they sit on the bar: U on the left, A on the right. */
+const BANDS = [...GRADE_BANDS].reverse().map((b, i, all) => ({ grade: b.grade, min: b.min, max: all[i + 1]?.min ?? 100 }));
+
+/**
+ * The score as a bar split into the five grade bands, each band tinted in its own grade colour.
+ * The fill sweeps in from the left in the same colours, and the achieved grade's letter is bold.
+ */
+function ScoreBar({ percent, grade }: { percent: number; grade: Grade }) {
+  const reduce = useReducedMotion();
+  const pct = Math.min(100, Math.max(0, percent));
+  const progress = useMotionValue(reduce ? pct : 0);
+
+  useEffect(() => {
+    if (reduce) return;
+    const controls = animate(progress, pct, { duration: 1.3, delay: 0.35, ease: [0.22, 1, 0.36, 1] });
+    return () => controls.stop();
+  }, [pct, progress, reduce]);
+
+  return (
+    <div role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct)} aria-label={`Score ${percent}%`} className="flex flex-col gap-1.5">
+      <div className="flex gap-1">
+        {BANDS.map((b) => (
+          <Segment key={b.grade} band={b} progress={progress} />
+        ))}
+      </div>
+      <div aria-hidden className="flex gap-1">
+        {BANDS.map((b) => (
+          <span
+            key={b.grade}
+            style={{ flex: `${b.max - b.min} 1 0%` }}
+            className={cn("min-w-0 text-xs font-extrabold", b.grade === grade ? "text-ink" : "text-subtle")}
+          >
+            {b.grade}
+            <span className="ml-1 hidden font-bold text-subtle md:inline">{b.min > 0 ? `${b.min}%` : ""}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Segment({ band, progress }: { band: (typeof BANDS)[number]; progress: MotionValue<number> }) {
+  const width = useTransform(progress, (p) => `${Math.min(1, Math.max(0, (p - band.min) / (band.max - band.min))) * 100}%`);
+  return (
+    <div style={{ flex: `${band.max - band.min} 1 0%` }} className={cn("h-3.5 overflow-hidden rounded-full md:h-4", gradeTintBg(band.grade))}>
+      <motion.div style={{ width }} className={cn("h-full rounded-full", gradeBg(band.grade))} />
+    </div>
+  );
+}
+
 function marksTone(q: ResultQuestion) {
   if (q.awarded >= q.points) return "bg-mint text-mint-deep";
   if (q.awarded === 0) return "bg-rose text-rose-ink";
@@ -158,9 +200,13 @@ function QuestionRow({ q }: { q: ResultQuestion }) {
           <span className="md:hidden">{q.position}</span>
           <span className="hidden md:inline">Q{q.position}</span>
         </span>
-        <span className="flex-1 text-sm font-extrabold md:font-extrabold md:text-muted">
-          {meta.label}
-          <span className="sr-only">, {plural(q.awarded, "mark")} out of {q.points}</span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="text-sm font-extrabold md:text-muted">
+            {meta.label}
+            <span className="sr-only">, {plural(q.awarded, "mark")} out of {q.points}</span>
+          </span>
+          {/* phones: a one-line peek at the question so rows are recognisable before opening */}
+          <span className="line-clamp-1 text-xs font-semibold text-muted md:hidden">{blankOut(q.prompt)}</span>
         </span>
         <span aria-hidden className={cn("rounded-full px-2.5 py-1 text-[13px] font-black md:px-3 md:py-[5px] md:text-sm", marksTone(q))}>
           {q.awarded} / {q.points}
@@ -175,12 +221,19 @@ function QuestionRow({ q }: { q: ResultQuestion }) {
   );
 }
 
+/** Underscore runs read badly in a sentence; show a short blank instead. */
+function blankOut(text: string): string {
+  return text.replace(/_{3,}/g, "____");
+}
+
 function Details({ q }: { q: ResultQuestion }) {
   const wrong = q.awarded < q.points;
+  const question = <p className="text-[15px] font-extrabold leading-snug text-ink">{blankOut(q.prompt)}</p>;
 
   if (q.kind === "written") {
     return (
       <>
+        {question}
         <div className="flex flex-col gap-1">
           <p className="text-xs font-extrabold text-muted">Your answer</p>
           <p className="whitespace-pre-wrap text-sm font-semibold leading-relaxed text-ink-2">{q.yourAnswer ?? "Not answered"}</p>
@@ -197,16 +250,19 @@ function Details({ q }: { q: ResultQuestion }) {
 
   const label = q.kind === "fill_blank" ? "Accepted" : "Correct answer";
   return (
-    <p className="text-sm font-bold leading-snug text-ink-2">
-      {q.yourAnswer == null ? "Not answered" : `Your answer: ${q.yourAnswer}`}
-      {wrong && q.correctAnswer && (
-        <>
-          {" · "}
-          <span className="text-mint-deep">
-            {label}: {q.correctAnswer}
-          </span>
-        </>
-      )}
-    </p>
+    <>
+      {question}
+      <p className="text-sm font-bold leading-snug text-ink-2">
+        {q.yourAnswer == null ? "Not answered" : `Your answer: ${q.yourAnswer}`}
+        {wrong && q.correctAnswer && (
+          <>
+            {" · "}
+            <span className="text-mint-deep">
+              {label}: {q.correctAnswer}
+            </span>
+          </>
+        )}
+      </p>
+    </>
   );
 }

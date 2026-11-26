@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { Check, Flag, X } from "lucide-react";
+import { MotionConfig, motion } from "motion/react";
 import type { StudentQuestion } from "@/lib/api-types";
 import { KIND_META } from "@/lib/question-kinds";
 import { cn, plural } from "@/lib/utils";
@@ -14,22 +15,90 @@ interface Props {
   answer: LocalAnswer | undefined;
   onChange: (response: string, immediate: boolean) => void;
   onToggleFlag: () => void;
+  /** 1 when moving forward, -1 when moving back: decides which way the card slides in. */
+  direction?: 1 | -1;
 }
 
-/** Shows a prompt, turning runs of underscores into a visible blank. */
-function Prompt({ text }: { text: string }): ReactNode {
-  return text.split(/(_{3,})/).map((part, i) =>
-    /^_{3,}$/.test(part) ? (
-      <span key={i} className="mx-1 inline-block w-20 border-b-[3px] border-ink align-baseline">
+/**
+ * Display only: adds invisible soft hyphens inside long words, so if one has to wrap the
+ * browser breaks it with a visible "-" instead of overflowing. The saved answer is untouched.
+ */
+function softHyphenate(text: string): string {
+  // every 7 non-space characters that are followed by more of the same word
+  return text.replace(/(\S{7})(?=\S)/g, "$1\u00ad");
+}
+
+/**
+ * Shows a prompt, turning runs of underscores into a visible blank. For fill-in-the-blank
+ * questions the blank is a mint pill that fills in live with what the student types.
+ */
+function Prompt({ text, fill }: { text: string; fill?: string }): ReactNode {
+  // Only fill-in-the-blank questions turn underscores into a blank; elsewhere they are plain text.
+  if (fill === undefined) return text;
+  let usedBlank = false;
+  return text.split(/(_{3,})/).map((part, i) => {
+    if (!/^_{3,}$/.test(part)) return part;
+    const value = !usedBlank ? (fill ?? "").trim() : "";
+    usedBlank = true;
+    return (
+      <span
+        key={i}
+        className={cn(
+          "mx-1 inline-block min-w-24 max-w-full hyphens-manual break-words rounded-xl border-b-[3px] px-3 text-center align-baseline transition-colors duration-150",
+          value ? "border-mint-ink bg-mint font-black text-mint-deep" : "border-dashed border-mint-ink/70 bg-mint/60",
+        )}
+      >
+        <span aria-hidden>{value ? softHyphenate(value) : " "}</span>
         <span className="sr-only">(blank)</span>
       </span>
-    ) : (
-      part
-    ),
+    );
+  });
+}
+
+/** Card slides in from the side we are travelling towards; its options follow one by one. */
+const cardVariants = {
+  // slide disabled for now: was `(d: number) => ({ opacity: 0, x: d * 32 })`
+  hidden: { opacity: 1, x: 0 },
+  show: { opacity: 1, x: 0, transition: { duration: 0.24, ease: "easeOut", staggerChildren: 0.04, delayChildren: 0.08 } },
+} as const;
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.2, ease: "easeOut" } },
+} as const;
+
+/** A tiny tick on phones that support it (Android). Silent elsewhere. */
+function buzz() {
+  if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(8);
+}
+
+/** Selected-state colours per kind, taken from the design's pastel pairs (not the brand green). */
+const tone = {
+  mcq: {
+    highlight: "border-pink-ink bg-pink",
+    badge: "bg-pink-ink text-white",
+    hover: "hover:border-pink-ink/40",
+  },
+  true_false: {
+    highlight: "border-sky-ink bg-sky",
+    badge: "bg-sky-ink text-white",
+    hover: "hover:border-sky-ink/40",
+  },
+} as const;
+
+/** The tinted highlight that glides from the old answer to the new one. */
+function Highlight({ id, className }: { id: string; className: string }) {
+  return (
+    <motion.span
+      layoutId={id}
+      aria-hidden
+      className={cn("absolute -inset-0.5 rounded-[18px] border-2", className)}
+      transition={{ type: "spring", stiffness: 520, damping: 38 }}
+    />
   );
 }
 
-export function QuestionView({ question, total, answer, onChange, onToggleFlag }: Props) {
+export function QuestionView({ question, total, answer, onChange, onToggleFlag, direction = 1 }: Props) {
   const meta = KIND_META[question.kind];
   const headingRef = useRef<HTMLHeadingElement>(null);
   const first = useRef(true);
@@ -45,25 +114,13 @@ export function QuestionView({ question, total, answer, onChange, onToggleFlag }
   }, [question.id]);
 
   return (
-    <div className="flex flex-col gap-3.5 md:gap-5">
+    <MotionConfig reducedMotion="user">
+    <div className="flex flex-col gap-3.5 overflow-x-clip md:gap-5">
       <div className="flex items-center justify-between gap-2.5">
-        <div className="flex min-w-0 items-center gap-3">
-          <span
-            aria-hidden
-            className={cn(
-              "grid size-[46px] shrink-0 -rotate-6 place-items-center rounded-2xl text-sm font-black md:size-[54px] md:rounded-[18px] md:text-base",
-              meta.bg,
-              meta.fg,
-            )}
-          >
-            {meta.badge}
-          </span>
+        <div className="flex min-w-0 items-center">
           <div className="flex flex-col gap-px">
             <p className="text-lg font-black md:text-2xl">
               Question {question.position} <span className="font-extrabold text-subtle">of {total}</span>
-            </p>
-            <p className="text-[13px] font-bold text-muted md:text-sm">
-              {meta.label} · {plural(question.points, "mark")}
             </p>
           </div>
         </div>
@@ -89,12 +146,14 @@ export function QuestionView({ question, total, answer, onChange, onToggleFlag }
         </button>
       </div>
 
+      <motion.div key={question.id} custom={direction} variants={cardVariants} initial={first.current ? false : "hidden"} animate="show">
       <Card className="flex flex-col gap-[18px] rounded-[26px] p-[22px] md:gap-6 md:rounded-[30px] md:p-8">
         <Chip size="md" className={cn("self-start", meta.bg, meta.fg)}>
           {meta.tag}
         </Chip>
         <h1 ref={headingRef} tabIndex={-1} className="text-xl font-extrabold leading-[1.4] outline-none md:text-[26px] md:leading-[1.35]">
-          <Prompt text={question.prompt} />
+          <Prompt text={question.prompt} fill={question.kind === "fill_blank" ? (answer?.response ?? "") : undefined} />
+          <span className="ml-2 whitespace-nowrap text-base font-extrabold text-muted md:text-lg">({plural(question.points, "mark")})</span>
         </h1>
 
         {question.kind === "mcq" && <McqOptions question={question} value={answer?.response ?? null} onPick={(v) => onChange(v, true)} />}
@@ -102,12 +161,37 @@ export function QuestionView({ question, total, answer, onChange, onToggleFlag }
         {question.kind === "fill_blank" && <FillBlank value={answer?.response ?? ""} onChange={(v) => onChange(v, false)} />}
         {question.kind === "written" && <Written value={answer?.response ?? ""} onChange={(v) => onChange(v, false)} />}
       </Card>
+      </motion.div>
     </div>
+    </MotionConfig>
   );
 }
 
 const optionBase =
-  "relative flex cursor-pointer items-center rounded-[18px] border-2 border-line-input bg-white font-bold leading-snug transition hover:border-brand/40 has-checked:border-brand has-checked:bg-brand-soft has-focus-visible:ring-4 has-focus-visible:ring-brand-ring";
+  "relative flex cursor-pointer items-center rounded-[18px] border-2 border-line-input bg-white font-bold leading-snug transition-colors has-focus-visible:ring-4 has-focus-visible:ring-brand-ring";
+
+/** Letter circle that fills green, pops, and swaps its letter for a tick that draws itself. */
+function ChoiceBadge({ selected, letter, selectedClass }: { selected: boolean; letter: string; selectedClass: string }) {
+  return (
+    <motion.span
+      aria-hidden
+      animate={selected ? { scale: [1, 1.2, 1] } : { scale: 1 }}
+      transition={{ duration: 0.26, ease: "easeOut" }}
+      className={cn(
+        "relative grid size-9 shrink-0 place-items-center rounded-full text-[15px] font-black transition-colors md:size-10",
+        selected ? selectedClass : "bg-chip text-ink-2",
+      )}
+    >
+      {selected ? (
+        <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round">
+          <motion.path d="m5 12.5 4.5 4.5L19 7.5" initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.22, ease: "easeOut" }} />
+        </svg>
+      ) : (
+        letter
+      )}
+    </motion.span>
+  );
+}
 
 function McqOptions({
   question,
@@ -121,25 +205,33 @@ function McqOptions({
   const group = useId();
   return (
     <div role="radiogroup" aria-label="Answer options" className="flex flex-col gap-2.5 md:gap-3">
-      {question.options?.map((o) => (
-        <label key={o.key} className={cn(optionBase, "min-h-[58px] gap-3 px-3 py-2.5 text-base md:min-h-16 md:gap-4 md:px-4 md:text-lg")}>
-          <input
-            type="radio"
-            name={`${group}-${question.id}`}
-            value={o.key}
-            checked={value === o.key}
-            onChange={() => onPick(o.key)}
-            className="peer sr-only"
-          />
-          <span
-            aria-hidden
-            className="grid size-9 shrink-0 place-items-center rounded-full bg-chip text-[15px] font-black text-ink-2 peer-checked:bg-brand peer-checked:text-white md:size-10"
+      {question.options?.map((o) => {
+        const selected = value === o.key;
+        return (
+          <motion.label
+            key={o.key}
+            variants={itemVariants}
+            whileTap={{ scale: 0.985 }}
+            whileHover={{ y: -1 }}
+            className={cn(optionBase, tone.mcq.hover, "min-h-[58px] gap-3 px-3 py-2.5 text-base md:min-h-16 md:gap-4 md:px-4 md:text-lg")}
           >
-            {o.key}
-          </span>
-          <span className="flex-1">{o.text}</span>
-        </label>
-      ))}
+            {selected && <Highlight id={`mcq-${question.id}`} className={tone.mcq.highlight} />}
+            <input
+              type="radio"
+              name={`${group}-${question.id}`}
+              value={o.key}
+              checked={selected}
+              onChange={() => {
+                buzz();
+                onPick(o.key);
+              }}
+              className="sr-only"
+            />
+            <ChoiceBadge selected={selected} letter={o.key} selectedClass={tone.mcq.badge} />
+            <span className="relative flex-1">{o.text}</span>
+          </motion.label>
+        );
+      })}
     </div>
   );
 }
@@ -160,28 +252,43 @@ function TrueFalse({
   ];
   return (
     <div role="radiogroup" aria-label="True or false" className="grid grid-cols-2 gap-2.5 md:gap-3.5">
-      {choices.map(({ key, label, Icon }) => (
-        <label
-          key={key}
-          className={cn(optionBase, "min-h-[120px] flex-col justify-center gap-2.5 text-xl font-black md:min-h-[150px] md:text-2xl")}
-        >
-          <input
-            type="radio"
-            name={`${group}-${question.id}`}
-            value={key}
-            checked={value === key}
-            onChange={() => onPick(key)}
-            className="peer sr-only"
-          />
-          <span
-            aria-hidden
-            className="grid size-12 place-items-center rounded-full bg-chip text-ink-2 peer-checked:bg-brand peer-checked:text-white md:size-14"
+      {choices.map(({ key, label, Icon }) => {
+        const selected = value === key;
+        return (
+          <motion.label
+            key={key}
+            variants={itemVariants}
+            whileTap={{ scale: 0.97 }}
+            whileHover={{ y: -1 }}
+            className={cn(optionBase, tone.true_false.hover, "min-h-[120px] flex-col justify-center gap-2.5 text-xl font-black md:min-h-[150px] md:text-2xl")}
           >
-            <Icon className="size-6" strokeWidth={3} />
-          </span>
-          {label}
-        </label>
-      ))}
+            {selected && <Highlight id={`tf-${question.id}`} className={tone.true_false.highlight} />}
+            <input
+              type="radio"
+              name={`${group}-${question.id}`}
+              value={key}
+              checked={selected}
+              onChange={() => {
+                buzz();
+                onPick(key);
+              }}
+              className="sr-only"
+            />
+            <motion.span
+              aria-hidden
+              animate={selected ? { scale: [1, 1.2, 1] } : { scale: 1 }}
+              transition={{ duration: 0.26, ease: "easeOut" }}
+              className={cn(
+                "relative grid size-12 place-items-center rounded-full transition-colors md:size-14",
+                selected ? tone.true_false.badge : "bg-chip text-ink-2",
+              )}
+            >
+              <Icon className="size-6" strokeWidth={3} />
+            </motion.span>
+            <span className="relative">{label}</span>
+          </motion.label>
+        );
+      })}
     </div>
   );
 }
@@ -204,7 +311,6 @@ function FillBlank({ value, onChange }: { value: string; onChange: (v: string) =
         placeholder="Type the missing word"
         className="h-14 text-lg font-bold"
       />
-      <p className="text-[13px] font-semibold text-muted">Capital letters and extra spaces don&apos;t matter.</p>
     </div>
   );
 }

@@ -16,16 +16,18 @@ export function Splash() {
 }
 
 /** Keeps signed-out visitors and the wrong role out of a section of the app. */
-export function AuthGate({ role, children }: { role: Role; children: ReactNode }) {
+export function AuthGate({ role, children }: { role: Role | Role[]; children: ReactNode }) {
   const { user, ready } = useAuth();
   const router = useRouter();
 
-  const allowed = ready && user?.role === role;
+  const roles = Array.isArray(role) ? role : [role];
+  const allowed = ready && !!user && roles.includes(user.role);
 
   useEffect(() => {
     if (!ready) return;
     if (!user) router.replace("/login");
-    else if (user.role !== role) router.replace(homeFor(user.role));
+    else if (!roles.includes(user.role)) router.replace(homeFor(user.role));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, user, role, router]);
 
   return allowed ? <>{children}</> : <Splash />;

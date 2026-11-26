@@ -27,6 +27,7 @@ function Panel() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [offline, setOffline] = useState(false);
+  const [noViolations, setNoViolations] = useState(false);
   const [sessions, setSessions] = useState<ReturnType<typeof api.dev.openSessions>>([]);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -34,6 +35,7 @@ function Panel() {
 
   const refresh = useCallback(() => {
     setOffline(api.dev.isOffline());
+    setNoViolations(api.dev.isViolationsDisabled());
     setSessions(api.dev.openSessions());
   }, []);
 
@@ -117,9 +119,19 @@ function Panel() {
               type="checkbox"
               checked={offline}
               onChange={(e) => act(() => api.dev.setOffline(e.target.checked))}
-              className="size-5 accent-brand"
+              className="size-5 accent-secondary"
             />
             Simulate no connection
+          </label>
+
+          <label className="flex items-center gap-2 font-extrabold">
+            <input
+              type="checkbox"
+              checked={noViolations}
+              onChange={(e) => act(() => api.dev.setViolationsDisabled(e.target.checked))}
+              className="size-5 accent-secondary"
+            />
+            Ignore leaving the exam window
           </label>
 
           {attemptId && (
@@ -127,9 +139,10 @@ function Panel() {
               <span className="font-extrabold">Timer for this exam</span>
               <div className="flex gap-1.5">
                 {[
-                  { label: "10:00 left", sec: 600 },
-                  { label: "1:00 left", sec: 60 },
-                  { label: "0:05 left", sec: 5 },
+                  { label: "10:00", sec: 600 },
+                  { label: "4:50", sec: 290 },
+                  { label: "1:00", sec: 60 },
+                  { label: "0:05", sec: 5 },
                 ].map((t) => (
                   <button
                     key={t.sec}
@@ -146,8 +159,16 @@ function Panel() {
 
           <button
             type="button"
+            onClick={() => act(() => api.dev.expireSession())}
+            className="h-10 rounded-xl border-2 border-line-input px-3 text-left font-extrabold hover:bg-paper"
+          >
+            Expire my sign-in
+          </button>
+
+          <button
+            type="button"
             onClick={() => act(() => `Marked and released: ${api.dev.teacherFinish().title}`)}
-            className="h-10 rounded-xl bg-brand-tint px-3 text-left font-black text-brand-dark hover:bg-brand-ring/60"
+            className="h-10 rounded-xl bg-secondary-soft px-3 text-left font-black text-secondary-dark hover:bg-secondary-ring/60"
           >
             Teacher marks my latest exam and releases results
           </button>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, toApiError, type ApiError } from "@/lib/api";
 import type { SaveAnswerPatch, SavedAnswer, SyncInfo } from "@/lib/api-types";
+import { clearAttemptCache, updateCachedAnswers } from "@/lib/attempt-cache";
 import type { Answers } from "@/components/student/exam/examStatus";
 
 export type SaveStatus = "saved" | "saving" | "error";
@@ -173,7 +174,13 @@ export function useAutosave({ attemptId, initial, onSync, onFatal }: Options) {
     window.clearTimeout(retry.current);
     pending.current.clear();
     persist();
-  }, [persist]);
+    clearAttemptCache(attemptId);
+  }, [persist, attemptId]);
+
+  // Keep the on-device copy of the exam current, so a reload without a connection shows everything.
+  useEffect(() => {
+    if (!stopped.current) updateCachedAnswers(attemptId, answers);
+  }, [attemptId, answers]);
 
   useEffect(() => {
     if (pending.current.size > 0) void flush();

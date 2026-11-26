@@ -10,10 +10,10 @@ const base =
   "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-full font-black no-underline transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-55";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-brand text-white hover:bg-brand-dark hover:text-white",
+  primary: "bg-squiggly bg-brand text-white hover:bg-brand-dark hover:text-white",
   secondary: "border-2 border-line-input bg-white font-extrabold text-ink hover:bg-paper hover:text-ink",
   dark: "bg-ink text-white hover:bg-black hover:text-white",
-  soft: "bg-brand-tint text-brand-dark hover:bg-brand-ring/60 hover:text-brand-dark",
+  soft: "bg-secondary-soft text-secondary-dark hover:bg-secondary-ring/60 hover:text-secondary-dark",
   ghost: "font-extrabold text-ink-2 hover:bg-chip hover:text-ink",
 };
 

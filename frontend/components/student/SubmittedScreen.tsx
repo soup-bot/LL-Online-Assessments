@@ -1,8 +1,9 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Check } from "lucide-react";
 import { motion } from "motion/react";
 import { api } from "@/lib/api";
 import type { SubmittedSummary } from "@/lib/api-types";
@@ -18,6 +19,11 @@ const copy = {
     text: "Your exam was submitted with everything you had saved.",
     how: "When time ran out",
   },
+  closed: {
+    title: () => "Your exam was handed in",
+    text: "Your teacher closed the exam, so it was submitted with everything you had saved.",
+    how: "When your teacher closed it",
+  },
   violations: {
     title: () => "Your exam was handed in",
     text: "You left the exam window 3 times, so it was submitted automatically. Your teacher can see this.",
@@ -32,7 +38,7 @@ export function SubmittedScreen() {
 
   return (
     <StudentShell active="exams">
-      <main className="mx-auto flex w-full max-w-[640px] flex-col gap-4 px-4 pb-8 pt-5 md:px-7 md:pt-10">
+      <main className="mx-auto flex min-h-dvh w-full max-w-[640px] flex-col justify-center gap-4 px-4 py-8 md:min-h-[calc(100dvh-73px)] md:px-7 md:py-10">
         {loading && <Skeleton className="h-[28rem] rounded-[30px]" />}
         {error && (
           <ErrorState
@@ -48,47 +54,61 @@ export function SubmittedScreen() {
   );
 }
 
-const confetti = [
-  "left-10 top-10 size-3 rounded-full bg-[#d9cfff]",
-  "left-[86px] top-[110px] size-2.5 rotate-[20deg] rounded-[3px] bg-[#bfdfff]",
-  "right-[50px] top-[46px] size-3.5 -rotate-[15deg] rounded bg-[#ffd0b5]",
-  "right-[90px] top-[120px] size-[9px] rounded-full bg-[#b8efd3]",
-  "left-[150px] top-[26px] size-[9px] rounded-full bg-[#ffe08a]",
-  "right-[60px] top-[190px] hidden size-3 rounded-full bg-[#d9cfff] md:block",
-];
+/** Brand-friendly confetti colours: the question-kind pastels' strong tones plus warm accents. */
+const CONFETTI_COLORS = ["#015746", "#5236d6", "#b3245f", "#1e62b8", "#f2b53a", "#ff9f6b"];
 
 function SubmittedContent({ data }: { data: SubmittedSummary }) {
   const text = copy[data.reason];
-  const writtenDone = !data.awaitingMarking;
+  const tile = useRef<HTMLSpanElement>(null);
 
-  const steps: { label: string; state: "done" | "pending" | "waiting" }[] = [
-    { label: "Quick questions marked automatically", state: "done" },
-    {
-      label: writtenDone ? "No written answers left for your teacher to mark" : `${data.teacher} marks your written answers`,
-      state: writtenDone ? "done" : "pending",
-    },
-    {
-      label: data.resultsReleased ? "Your results are ready" : "Results appear on your exams page",
-      state: data.resultsReleased ? "done" : "waiting",
-    },
-  ];
+  // Real confetti, once per submission, and only when the student handed it in themselves
+  // (it would be tone-deaf after "Time's up" or a violation). Skipped for reduced motion.
+  useEffect(() => {
+    if (data.reason !== "manual") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    // keyed on the submission time too: attempt numbers restart whenever the demo data resets
+    const key = `ll.confetti.${data.attemptId}.${data.submittedAt}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+    } catch {
+      // storage blocked: just celebrate
+    }
+
+    let cancelled = false;
+    void import("canvas-confetti").then(({ default: confetti }) => {
+      if (cancelled) return;
+      try {
+        sessionStorage.setItem(key, "1");
+      } catch {
+        // ignore
+      }
+      const rect = tile.current?.getBoundingClientRect();
+      const origin = rect
+        ? { x: (rect.left + rect.width / 2) / window.innerWidth, y: (rect.top + rect.height / 2) / window.innerHeight }
+        : { x: 0.5, y: 0.4 };
+      const base = { colors: CONFETTI_COLORS, ticks: 200, gravity: 0.95, scalar: 1.05, disableForReducedMotion: true };
+      confetti({ ...base, particleCount: 80, spread: 80, startVelocity: 42, origin });
+      window.setTimeout(() => {
+        confetti({ ...base, particleCount: 45, angle: 60, spread: 65, startVelocity: 48, origin: { x: 0, y: 0.7 } });
+        confetti({ ...base, particleCount: 45, angle: 120, spread: 65, startVelocity: 48, origin: { x: 1, y: 0.7 } });
+      }, 250);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [data.reason, data.attemptId, data.submittedAt]);
 
   return (
     <>
       <Card className="flex flex-col items-center gap-[18px] rounded-[30px] px-[22px] py-7 text-center md:gap-6 md:rounded-[32px] md:p-10">
-        <div aria-hidden className="pointer-events-none absolute inset-0">
-          {confetti.map((c) => (
-            <span key={c} className={cn("absolute", c)} />
-          ))}
-        </div>
-
         <motion.span
+          ref={tile}
           initial={{ scale: 0.5, rotate: -24, opacity: 0 }}
           animate={{ scale: 1, rotate: -6, opacity: 1 }}
           transition={{ type: "spring", stiffness: 260, damping: 16 }}
-          className="relative mt-6 grid size-[84px] place-items-center rounded-[28px] bg-mint text-mint-ink md:mt-2 md:size-[92px] md:rounded-[30px]"
+          className="relative mt-6 grid size-[88px] place-items-center rounded-[28px] bg-mint md:mt-2 md:size-[100px] md:rounded-[32px]"
         >
-          <Check className="size-[42px] md:size-[46px]" strokeWidth={2.8} aria-hidden />
+          <Image src="/tick-green.png" alt="" width={360} height={284} priority aria-hidden className="h-auto w-[62%]" />
         </motion.span>
 
         <div className="relative flex flex-col gap-1.5 md:gap-2">
@@ -102,41 +122,20 @@ function SubmittedContent({ data }: { data: SubmittedSummary }) {
           <Fact label="Answered" value={`${data.answered} of ${data.questionCount}`} />
         </dl>
 
-        <div className="relative flex w-full flex-col gap-2.5 text-left">
-          <h2 className="text-base font-black md:text-[17px]">What happens next</h2>
-          <ol className="flex flex-col gap-2.5 md:gap-3">
-            {steps.map((s) => (
-              <li key={s.label} className="flex items-center gap-2.5 md:gap-3">
-                <span
-                  aria-hidden
-                  className={cn(
-                    "grid size-7 shrink-0 place-items-center rounded-full md:size-[30px]",
-                    s.state === "done" && "bg-brand text-white",
-                    s.state === "pending" && "border-2 border-amber-line bg-amber",
-                    s.state === "waiting" && "bg-chip",
-                  )}
-                >
-                  {s.state === "done" && <Check className="size-3.5 md:size-[15px]" strokeWidth={3.2} />}
-                </span>
-                <span className={cn("text-sm font-bold md:text-[15px]", s.state === "waiting" && "text-muted")}>
-                  {s.label}
-                  <span className="sr-only">
-                    {s.state === "done" ? " (done)" : s.state === "pending" ? " (in progress)" : " (not yet)"}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ol>
+        {/* desktop: inside the card. Visibility is on a wrapper, not the button, so the button's own display style can't override it. */}
+        <div className="relative hidden md:block">
+          <ButtonLink href="/student" className="md:px-[30px]">
+            Back to my exams
+          </ButtonLink>
         </div>
-
-        <ButtonLink href="/student" className="relative hidden md:inline-flex md:px-[30px]">
-          Back to my exams
-        </ButtonLink>
       </Card>
 
-      <ButtonLink href="/student" block className="md:hidden">
-        Back to my exams
-      </ButtonLink>
+      {/* phones: below the card */}
+      <div className="md:hidden">
+        <ButtonLink href="/student" block>
+          Back to my exams
+        </ButtonLink>
+      </div>
 
       {data.resultsReleased && (
         <p className="text-center text-sm font-bold">

@@ -33,7 +33,7 @@ export interface Option {
 
 export type AnswerKey =
   | { kind: "mcq"; correct: string }
-  | { kind: "true_false"; correct: boolean }
+  | { kind: "true_false"; correct: boolean | null }
   | { kind: "fill_blank"; accepted: string[] }
   | { kind: "written"; markingPoints: string[] };
 
@@ -52,13 +52,18 @@ export interface Question {
 
 export type ExamStatus = "draft" | "published";
 
+/** "any": students may move between questions freely. "in_order": one way, no going back. */
+export type Navigation = "any" | "in_order";
+
 export interface Exam {
   id: number;
   title: string;
   ownerId: number;
   timeLimitMinutes: number;
+  navigation: Navigation;
   rules: string;
   status: ExamStatus;
+  publishedAt: string | null;
 }
 
 export type SessionStatus = "not_open" | "open" | "closed";
@@ -69,11 +74,13 @@ export interface ExamSession {
   examId: number;
   classId: number;
   status: SessionStatus;
+  openedAt: string | null;
+  closedAt: string | null;
   resultsReleasedAt: string | null;
 }
 
 export type AttemptStatus = "in_progress" | "submitted" | "marked";
-export type SubmitReason = "manual" | "timeout" | "violations";
+export type SubmitReason = "manual" | "timeout" | "violations" | "closed";
 
 export interface Attempt {
   id: number;
@@ -99,6 +106,8 @@ export interface AnswerRecord {
   /** null while a written answer is still waiting for the teacher. */
   awardedMarks: number | null;
   feedback: string | null;
+  /** Written answers: which marking points the teacher ticked. */
+  ticks?: number[];
 }
 
 export interface ViolationRecord {

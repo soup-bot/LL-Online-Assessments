@@ -5,20 +5,24 @@ import type { SyncInfo } from "@/lib/api-types";
 
 /**
  * Countdown that trusts the server, not the device. It remembers the server time at the
- * last sync and advances it with `performance.now()`, which keeps counting steadily even
- * if the student changes the phone's clock. Reloading re-syncs from the server's answer.
+ * last sync and advances it by the time that has passed since. Two device clocks measure that:
+ * `performance.now()` can't be changed by the student but may stop while a phone sleeps, and
+ * `Date.now()` keeps going through sleep but can be changed. Taking the larger of the two means
+ * neither sleeping nor setting the clock back can buy extra time. The screen also re-syncs with
+ * the server whenever the student comes back, which corrects any remaining difference.
  */
 export function useServerClock(initial: SyncInfo) {
   const anchor = useRef({
     serverMs: Date.parse(initial.serverNow),
     perfMs: performance.now(),
+    wallMs: Date.now(),
     deadlineMs: Date.parse(initial.deadlineAt),
   });
 
   const compute = useCallback(() => {
     const a = anchor.current;
-    const serverNow = a.serverMs + (performance.now() - a.perfMs);
-    return a.deadlineMs - serverNow;
+    const elapsed = Math.max(performance.now() - a.perfMs, Date.now() - a.wallMs);
+    return a.deadlineMs - (a.serverMs + elapsed);
   }, []);
 
   const [remainingMs, setRemainingMs] = useState(compute);
@@ -34,6 +38,7 @@ export function useServerClock(initial: SyncInfo) {
       anchor.current = {
         serverMs: Date.parse(info.serverNow),
         perfMs: performance.now(),
+        wallMs: Date.now(),
         deadlineMs: Date.parse(info.deadlineAt),
       };
       setRemainingMs(compute());

@@ -105,6 +105,11 @@ export interface SyncInfo {
   deadlineAt: string;
 }
 
+/** The server's view of an attempt's clock, plus whether it is still running. */
+export interface ClockInfo extends SyncInfo {
+  status: AttemptStatus;
+}
+
 export interface ViolationOutcome {
   count: number;
   max: number;

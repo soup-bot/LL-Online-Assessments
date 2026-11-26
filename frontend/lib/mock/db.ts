@@ -10,6 +10,7 @@ import { DB_VERSION, buildSeed } from "@/lib/mock/seed";
 const DB_KEY = "ll.mock.db";
 export const SESSION_KEY = "ll.session";
 const OFFLINE_KEY = "ll.dev.offline";
+const NO_VIOLATIONS_KEY = "ll.dev.noviolations";
 
 export function readDb(): DbState {
   try {
@@ -83,6 +84,24 @@ export function setSimulatingOffline(on: boolean): void {
   try {
     if (on) localStorage.setItem(OFFLINE_KEY, "1");
     else localStorage.removeItem(OFFLINE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/** Dev switch: ignore the student leaving the exam window (handy while testing). */
+export function isViolationGuardDisabled(): boolean {
+  try {
+    return localStorage.getItem(NO_VIOLATIONS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setViolationGuardDisabled(on: boolean): void {
+  try {
+    if (on) localStorage.setItem(NO_VIOLATIONS_KEY, "1");
+    else localStorage.removeItem(NO_VIOLATIONS_KEY);
   } catch {
     // ignore
   }

@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { MonitorX, Send, Timer, WifiOff } from "lucide-react";
+import Image from "next/image";
+import { MonitorX, Timer, WifiOff } from "lucide-react";
 import { cn, formatClock } from "@/lib/utils";
 import type { Tally } from "@/components/student/exam/examStatus";
 import { Button, Modal, Notice, Spinner } from "@/components/ui";
@@ -15,13 +16,33 @@ function IconTile({ tone, children }: { tone: string; children: ReactNode }) {
 }
 
 const list = (label: string, value: string, tone: string) => (
-  <li key={label} className={cn("flex items-center justify-between gap-3 rounded-2xl px-3.5 py-3 text-sm font-extrabold md:rounded-[18px] md:px-4 md:text-[15px]", tone)}>
-    <span>{label}</span>
-    <span>{value}</span>
+  <li key={label} className={cn("flex items-start justify-between gap-3 rounded-2xl px-3.5 py-3 text-sm font-extrabold md:rounded-[18px] md:px-4 md:text-[15px]", tone)}>
+    <span className="shrink-0">{label}</span>
+    <span className="min-w-0 text-right">{value}</span>
   </li>
 );
 
-const positions = (nums: number[]) => nums.map((n) => `Q${n}`).join(", ");
+/**
+ * Compact list of question numbers: runs of 3+ become ranges ("Q2-Q8") and anything past the
+ * first few shows as "+N more", so a 100-question exam can never overflow the dialog.
+ */
+function positions(nums: number[], maxShown = 4): string {
+  const sorted = [...nums].sort((a, b) => a - b);
+  const groups: number[][] = [];
+  for (const n of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && n === last[last.length - 1] + 1) last.push(n);
+    else groups.push([n]);
+  }
+  const parts: { text: string; count: number }[] = [];
+  for (const g of groups) {
+    if (g.length >= 3) parts.push({ text: `Q${g[0]}\u2013Q${g[g.length - 1]}`, count: g.length });
+    else g.forEach((n) => parts.push({ text: `Q${n}`, count: 1 }));
+  }
+  const shown = parts.slice(0, maxShown);
+  const hidden = parts.slice(maxShown).reduce((sum, p) => sum + p.count, 0);
+  return shown.map((p) => p.text).join(", ") + (hidden > 0 ? ` +${hidden} more` : "");
+}
 
 /** "Submit your exam?" with a summary of what is and isn't done. */
 export function ConfirmDialog({
@@ -42,10 +63,17 @@ export function ConfirmDialog({
   error: string | null;
 }) {
   return (
-    <Modal open={open} onClose={submitting ? undefined : onClose} dismissible={!submitting} role="alertdialog" labelledBy="confirm-title">
+    <Modal
+      open={open}
+      onClose={submitting ? undefined : onClose}
+      dismissible={!submitting}
+      role="alertdialog"
+      labelledBy="confirm-title"
+      className="max-h-[88dvh] overflow-y-auto"
+    >
       <div className="flex flex-col gap-4 p-6 md:gap-5 md:p-[34px]">
         <IconTile tone="bg-brand text-white">
-          <Send className="size-6 md:size-7" strokeWidth={2.2} aria-hidden />
+          <Image src="/submit-white.png" alt="" width={256} height={256} aria-hidden className="size-9 md:size-10" />
         </IconTile>
         <div className="flex flex-col gap-1.5">
           <h2 id="confirm-title" className="text-2xl font-black md:text-[28px]">
@@ -151,7 +179,7 @@ export function SubmittingDialog({ open, reason, offline }: { open: boolean; rea
             You&apos;re offline. We&apos;ll hand it in as soon as you&apos;re connected again. Your answers are safe.
           </Notice>
         ) : (
-          <Spinner className="size-7 text-brand" />
+          <Spinner className="size-7 text-secondary" />
         )}
       </div>
     </Modal>

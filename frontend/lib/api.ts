@@ -6,6 +6,7 @@
 
 import type {
   AttemptState,
+  ClockInfo,
   CoverData,
   ExamCard,
   ResultDetail,
@@ -24,12 +25,14 @@ import { GLOBAL_RULES, MAX_VIOLATIONS, SAVE_GRACE_MS } from "@/lib/config";
 import { gradeFor, hasAnswer, markObjective, percentOf } from "@/lib/grading";
 import {
   isSimulatingOffline,
+  isViolationGuardDisabled,
   mutate,
   readDb,
   resetDb,
   sessionUserId,
   setSessionUserId,
   setSimulatingOffline,
+  setViolationGuardDisabled,
 } from "@/lib/mock/db";
 import { PASSWORD } from "@/lib/mock/seed";
 import type {
@@ -72,18 +75,27 @@ export function toApiError(error: unknown): ApiError {
   return new ApiError("network", "Something went wrong on our side. Please try again.");
 }
 
+/** Fired whenever the API reports the session has ended. */
+export const UNAUTHORIZED_EVENT = "ll-unauthorized";
+
 /* --------------------------------------------------------------- plumbing */
 
 /** Simulated round trip: a little latency, and the dev "offline" switch. */
-async function call<T>(fn: () => T): Promise<T> {
+export async function call<T>(fn: () => T): Promise<T> {
   await new Promise((resolve) => setTimeout(resolve, 120 + Math.random() * 180));
   if (isSimulatingOffline()) {
     throw new ApiError("network", "We can't reach the server. Check your connection and try again.");
   }
-  return fn();
+  try {
+    return fn();
+  } catch (e) {
+    // Any call that finds the session gone tells the app, which signs out and shows the login page.
+    if (e instanceof ApiError && e.code === "unauthorized") window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    throw e;
+  }
 }
 
-const nowIso = () => new Date().toISOString();
+export const nowIso = () => new Date().toISOString();
 
 function currentStudent(db: DbState): User {
   const user = db.users.find((u) => u.id === sessionUserId());
@@ -96,7 +108,7 @@ function classOf(db: DbState, studentId: number): SchoolClass | undefined {
   return db.classes.find((c) => c.studentIds.includes(studentId));
 }
 
-function profileOf(db: DbState, user: User): StudentProfile {
+export function profileOf(db: DbState, user: User): StudentProfile {
   const cls = classOf(db, user.id);
   return {
     id: user.id,
@@ -107,12 +119,12 @@ function profileOf(db: DbState, user: User): StudentProfile {
   };
 }
 
-const examOf = (db: DbState, session: ExamSession): Exam => db.exams.find((e) => e.id === session.examId)!;
-const sessionOf = (db: DbState, attempt: Attempt): ExamSession => db.sessions.find((s) => s.id === attempt.sessionId)!;
-const questionsOf = (db: DbState, examId: number): Question[] =>
+export const examOf = (db: DbState, session: ExamSession): Exam => db.exams.find((e) => e.id === session.examId)!;
+export const sessionOf = (db: DbState, attempt: Attempt): ExamSession => db.sessions.find((s) => s.id === attempt.sessionId)!;
+export const questionsOf = (db: DbState, examId: number): Question[] =>
   db.questions.filter((q) => q.examId === examId).sort((a, b) => a.position - b.position);
 const teacherOfExam = (db: DbState, exam: Exam) => teacherLabel(db.users.find((u) => u.id === exam.ownerId));
-const answersOf = (db: DbState, attemptId: number) => db.answers.filter((a) => a.attemptId === attemptId);
+export const answersOf = (db: DbState, attemptId: number) => db.answers.filter((a) => a.attemptId === attemptId);
 
 function ownedAttempt(db: DbState, attemptId: number, user: User): Attempt {
   const attempt = db.attempts.find((a) => a.id === attemptId && a.studentId === user.id);
@@ -137,14 +149,14 @@ function kindCounts(questions: Question[]) {
   return counts;
 }
 
-function totalMarks(questions: Question[]) {
+export function totalMarks(questions: Question[]) {
   return questions.reduce((sum, q) => sum + q.points, 0);
 }
 
 /* ------------------------------------------------------- attempt lifecycle */
 
 /** Submit an attempt: mark the objective questions and decide if the teacher is needed. */
-function finalize(db: DbState, attempt: Attempt, reason: SubmitReason, at: Date = new Date()): void {
+export function finalize(db: DbState, attempt: Attempt, reason: SubmitReason, at: Date = new Date()): void {
   if (attempt.status !== "in_progress") return;
   const session = sessionOf(db, attempt);
   let needsTeacher = false;
@@ -172,7 +184,7 @@ function finalize(db: DbState, attempt: Attempt, reason: SubmitReason, at: Date 
 }
 
 /** Server-side clock check: an attempt past its deadline (plus grace) is submitted for the student. */
-function expireIfDue(db: DbState, attempt: Attempt): boolean {
+export function expireIfDue(db: DbState, attempt: Attempt): boolean {
   if (attempt.status === "in_progress" && Date.now() > Date.parse(attempt.deadlineAt) + SAVE_GRACE_MS) {
     finalize(db, attempt, "timeout", new Date(attempt.deadlineAt));
     return true;
@@ -180,14 +192,14 @@ function expireIfDue(db: DbState, attempt: Attempt): boolean {
   return false;
 }
 
-function score(db: DbState, attempt: Attempt) {
+export function score(db: DbState, attempt: Attempt) {
   const questions = questionsOf(db, sessionOf(db, attempt).examId);
   const records = answersOf(db, attempt.id);
   const got = records.reduce((sum, r) => sum + (r.awardedMarks ?? 0), 0);
   return { score: got, total: totalMarks(questions) };
 }
 
-const isReleased = (db: DbState, attempt: Attempt) =>
+export const isReleased = (db: DbState, attempt: Attempt) =>
   attempt.status === "marked" && sessionOf(db, attempt).resultsReleasedAt != null;
 
 function examCard(db: DbState, session: ExamSession, attempt?: Attempt): ExamCard {
@@ -280,7 +292,7 @@ function correctAnswerText(q: Question): string | null {
     case "mcq":
       return optionText(q, key.correct);
     case "true_false":
-      return key.correct ? "True" : "False";
+      return key.correct == null ? null : key.correct ? "True" : "False";
     case "fill_blank":
       return key.accepted.join(", ");
     case "written":
@@ -300,7 +312,8 @@ export const api = {
     async login(email: string, password: string): Promise<User> {
       return call(() => {
         const user = readDb().users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-        if (!user || password !== PASSWORD) throw new ApiError("unauthorized", "That email and password don't match. Please try again.");
+        if (!user || password !== PASSWORD) // "validation", not "unauthorized": a wrong password must not look like an expired session
+        throw new ApiError("validation", "That email and password don't match. Please try again.");
         setSessionUserId(user.id);
         return user;
       });
@@ -366,7 +379,7 @@ export const api = {
             timeLimitMinutes: exam.timeLimitMinutes,
             questionCount: questions.length,
             totalMarks: totalMarks(questions),
-            freeNavigation: true,
+            freeNavigation: exam.navigation !== "in_order",
             globalRules: GLOBAL_RULES.map((r) => ({ id: r.id, text: r.text })),
             examRules: exam.rules,
             student: profileOf(db, user),
@@ -418,6 +431,21 @@ export const api = {
           const attempt = ownedAttempt(db, attemptId, user);
           expireIfDue(db, attempt);
           return attemptState(db, attempt, user);
+        }),
+      );
+    },
+
+    /**
+     * Just the server's clock for an attempt. The exam screen asks for it whenever the student
+     * comes back to the tab, so a countdown that fell behind while the phone slept is corrected.
+     */
+    async clock(attemptId: number): Promise<ClockInfo> {
+      return call(() =>
+        mutate((db) => {
+          const user = currentStudent(db);
+          const attempt = ownedAttempt(db, attemptId, user);
+          expireIfDue(db, attempt);
+          return { serverNow: nowIso(), deadlineAt: attempt.deadlineAt, status: attempt.status };
         }),
       );
     },
@@ -649,8 +677,21 @@ export const api = {
       setSimulatingOffline(on);
     },
 
+    /** Pretend the sign-in expired on the server: the next request will be refused. */
+    expireSession(): void {
+      setSessionUserId(null);
+    },
+
     isOffline(): boolean {
       return isSimulatingOffline();
+    },
+
+    setViolationsDisabled(on: boolean): void {
+      setViolationGuardDisabled(on);
+    },
+
+    isViolationsDisabled(): boolean {
+      return isViolationGuardDisabled();
     },
 
     /** Pretend the teacher marked the written answers and released results. */

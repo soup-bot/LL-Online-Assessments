@@ -12,8 +12,8 @@ const card: Record<QuestionStatus, string> = {
   flagged: "border-2 border-amber-line bg-amber-soft",
 };
 
-const chip: Record<QuestionStatus, { label: string; tone: "brand" | "amber" | "neutral" }> = {
-  answered: { label: "Answered", tone: "brand" },
+const chip: Record<QuestionStatus, { label: string; tone: "lilac" | "amber" | "neutral" }> = {
+  answered: { label: "Answered", tone: "lilac" },
   flagged: { label: "Come back", tone: "amber" },
   empty: { label: "Not answered", tone: "neutral" },
 };
@@ -42,7 +42,7 @@ export function ReviewScreen({
           <p className="text-base font-bold text-muted">Have a last look. Tap any question to jump back to it.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Chip tone="brand" className="h-[38px] px-3.5 text-sm">
+          <Chip tone="lilac" className="h-[38px] px-3.5 text-sm">
             {tally.answered} answered
           </Chip>
           {tally.flagged.length > 0 && (

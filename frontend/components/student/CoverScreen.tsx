@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, CloudCheck, FileText, MonitorX, Timer, type LucideIcon } from "lucide-react";
@@ -93,15 +94,30 @@ function CoverContent({ data }: { data: CoverData }) {
         </div>
 
         <div className="grid grid-cols-3 gap-2 md:gap-3.5">
-          <Stat value={`${data.timeLimitMinutes} min`} label="Time limit" tone="bg-brand-tint" ink="text-brand-dark" sub="text-brand-mid" />
+          <Stat
+            value={`${data.timeLimitMinutes} min`}
+            label="Time limit"
+            tone="bg-brand-tint"
+            ink="text-brand-dark"
+            sub="text-brand-mid"
+            icon="/clock-green.png"
+          />
           <Stat
             value={String(data.questionCount)}
             label={data.freeNavigation ? "Questions, any order" : "Questions"}
             tone="bg-sky"
             ink="text-sky-deep"
             sub="text-[#1e4f86]"
+            icon="/question-blue.png"
           />
-          <Stat value={String(data.totalMarks)} label="Marks" tone="bg-mint" ink="text-mint-deep" sub="text-[#155e3b]" />
+          <Stat
+            value={String(data.totalMarks)}
+            label="Marks"
+            tone="bg-mint"
+            ink="text-mint-deep"
+            sub="text-[#155e3b]"
+            icon="/star-green.png"
+          />
         </div>
       </Card>
 
@@ -152,7 +168,7 @@ function CoverContent({ data }: { data: CoverData }) {
             type="checkbox"
             checked={agreed}
             onChange={(e) => setAgreed(e.target.checked)}
-            className="size-[22px] accent-brand"
+            className="size-[22px] accent-secondary"
           />
           I&apos;ve read the rules and I&apos;m ready
         </label>
@@ -165,11 +181,22 @@ function CoverContent({ data }: { data: CoverData }) {
   );
 }
 
-function Stat({ value, label, tone, ink, sub }: { value: string; label: string; tone: string; ink: string; sub: string }) {
+function Stat({ value, label, tone, ink, sub, icon }: { value: string; label: string; tone: string; ink: string; sub: string; icon?: string }) {
   return (
-    <div className={cn("flex flex-col rounded-[18px] p-3 md:gap-1 md:rounded-[22px] md:p-[18px]", tone)}>
-      <span className={cn("text-[21px] font-black leading-tight md:text-[30px]", ink)}>{value}</span>
-      <span className={cn("text-xs font-bold leading-tight md:text-sm", sub)}>{label}</span>
+    <div className={cn("bg-fabric relative flex flex-col overflow-hidden rounded-[18px] p-3 md:gap-1 md:rounded-[22px] md:p-[18px]", tone)}>
+      {/* watermark: sits behind the text, cropped by the tile's corner */}
+      {icon && (
+        <Image
+          src={icon}
+          alt=""
+          width={256}
+          height={256}
+          aria-hidden
+          className="pointer-events-none absolute -bottom-3 -right-3 size-[72px] opacity-[0.12] md:-bottom-4 md:-right-4 md:size-28 md:opacity-25"
+        />
+      )}
+      <span className={cn("relative text-[21px] font-black leading-tight md:text-[30px]", ink)}>{value}</span>
+      <span className={cn("relative text-xs font-bold leading-tight md:text-sm", sub)}>{label}</span>
     </div>
   );
 }

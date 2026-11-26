@@ -20,7 +20,19 @@
   --color-line-header: #eeeae4;
   --color-dot: #e6e0d6;
 
-  /* brand green */
+  /*
+   * Colour roles
+   *  primary   brand green     the main action on a screen, the logo, grades. Use sparingly.
+   *  secondary violet          navigation, selection, links, focus, progress, info.
+   *  accent    amber           things that want attention: counts, "to mark", warnings.
+   *  success   mint / error rose, and one pastel per question kind (see question-kinds.ts).
+   */
+  --color-secondary: #5236d6;
+  --color-secondary-dark: #3f28ad;
+  --color-secondary-soft: #efeaff;
+  --color-secondary-ring: #d9d0ff;
+
+  /* brand green (primary) */
   --color-brand: #015746;
   --color-brand-dark: #01463a;
   --color-brand-mid: #2c5e52;
@@ -37,6 +49,8 @@
   --color-sky-deep: #174f95;
   --color-lilac: #efeaff;
   --color-lilac-ink: #5236d6;
+  --color-pink: #ffe6f0;
+  --color-pink-ink: #b3245f;
   --color-peach: #ffe9dc;
   --color-peach-ink: #a3420f;
   --color-peach-soft: #fff4ec;
@@ -64,6 +78,8 @@
 
   html {
     -webkit-text-size-adjust: 100%;
+    /* keep the layout from jumping sideways when a scrollbar appears or goes away */
+    scrollbar-gutter: stable;
   }
 
   body {
@@ -87,16 +103,43 @@
     cursor: pointer;
   }
 
+  /* Phones: no grey tap flash, no double-tap zoom delay on anything tappable. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button,
+  a,
+  label,
+  summary,
+  [role="button"],
+  [role="menuitem"] {
+    touch-action: manipulation;
+  }
+
+  /* Every button gives a little press feedback. Utilities (e.g. active:scale-95) still override this. */
+  button:not(:disabled),
+  [role="button"],
+  [role="menuitem"],
+  summary {
+    transition: transform 120ms ease-out;
+  }
+  button:not(:disabled):active,
+  [role="button"]:active,
+  [role="menuitem"]:active,
+  summary:active {
+    transform: scale(0.97);
+  }
+
   a {
-    color: var(--color-brand);
+    color: var(--color-secondary);
   }
   a:hover {
-    color: var(--color-brand-dark);
+    color: var(--color-secondary-dark);
   }
 
   /* Visible keyboard focus everywhere, without ringing mouse clicks. */
   :focus-visible {
-    outline: 3px solid var(--color-brand-ring);
+    outline: 3px solid var(--color-secondary-ring);
     outline-offset: 2px;
   }
 
@@ -124,12 +167,61 @@
     background-position: left;
   }
 
+  /*
+   * Fabric weave laid over a coloured card. The texture is near-white, so multiply leaves the
+   * card colour alone and only darkens the weave. Content in the card needs `relative`.
+   */
+  .bg-fabric::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("/45-degree-fabric-light.png") repeat;
+    background-size: 160px;
+    mix-blend-mode: multiply;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  /* Scalloped medal shape for grade tiles (the mask is a 14-lobe circle). */
+  .rosette {
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M100.00 50.00L99.72 51.30L98.91 52.56L97.67 53.75L96.16 54.85L94.58 55.87L93.11 56.83L91.93 57.77L91.17 58.75L90.89 59.82L91.09 61.01L91.69 62.35L92.57 63.83L93.56 65.42L94.46 67.07L95.11 68.69L95.36 70.20L95.12 71.52L94.38 72.61L93.16 73.43L91.57 74.00L89.75 74.36L87.88 74.60L86.11 74.82L84.60 75.14L83.43 75.65L82.66 76.45L82.27 77.56L82.20 78.99L82.33 80.68L82.53 82.53L82.65 84.41L82.57 86.17L82.19 87.69L81.45 88.84L80.36 89.56L78.94 89.83L77.29 89.71L75.51 89.28L73.71 88.69L72.00 88.11L70.47 87.69L69.16 87.60L68.08 87.91L67.22 88.68L66.52 89.89L65.90 91.43L65.29 93.16L64.60 94.92L63.78 96.52L62.80 97.78L61.66 98.57L60.38 98.82L58.99 98.53L57.56 97.76L56.14 96.63L54.76 95.33L53.47 94.05L52.25 92.97L51.11 92.25L50.00 92.00L48.89 92.25L47.75 92.97L46.53 94.05L45.24 95.33L43.86 96.63L42.44 97.76L41.01 98.53L39.62 98.82L38.34 98.57L37.20 97.78L36.22 96.52L35.40 94.92L34.71 93.16L34.10 91.43L33.48 89.89L32.78 88.68L31.92 87.91L30.84 87.60L29.53 87.69L28.00 88.11L26.29 88.69L24.49 89.28L22.71 89.71L21.06 89.83L19.64 89.56L18.55 88.84L17.81 87.69L17.43 86.17L17.35 84.41L17.47 82.53L17.67 80.68L17.80 78.99L17.73 77.56L17.34 76.45L16.57 75.65L15.40 75.14L13.89 74.82L12.12 74.60L10.25 74.36L8.43 74.00L6.84 73.43L5.62 72.61L4.88 71.52L4.64 70.20L4.89 68.69L5.54 67.07L6.44 65.42L7.43 63.83L8.31 62.35L8.91 61.01L9.11 59.82L8.83 58.75L8.07 57.77L6.89 56.83L5.42 55.87L3.84 54.85L2.33 53.75L1.09 52.56L0.28 51.30L0.00 50.00L0.28 48.70L1.09 47.44L2.33 46.25L3.84 45.15L5.42 44.13L6.89 43.17L8.07 42.23L8.83 41.25L9.11 40.18L8.91 38.99L8.31 37.65L7.43 36.17L6.44 34.58L5.54 32.93L4.89 31.31L4.64 29.80L4.88 28.48L5.62 27.39L6.84 26.57L8.43 26.00L10.25 25.64L12.12 25.40L13.89 25.18L15.40 24.86L16.57 24.35L17.34 23.55L17.73 22.44L17.80 21.01L17.67 19.32L17.47 17.47L17.35 15.59L17.43 13.83L17.81 12.31L18.55 11.16L19.64 10.44L21.06 10.17L22.71 10.29L24.49 10.72L26.29 11.31L28.00 11.89L29.53 12.31L30.84 12.40L31.92 12.09L32.78 11.32L33.48 10.11L34.10 8.57L34.71 6.84L35.40 5.08L36.22 3.48L37.20 2.22L38.34 1.43L39.62 1.18L41.01 1.47L42.44 2.24L43.86 3.37L45.24 4.67L46.53 5.95L47.75 7.03L48.89 7.75L50.00 8.00L51.11 7.75L52.25 7.03L53.47 5.95L54.76 4.67L56.14 3.37L57.56 2.24L58.99 1.47L60.38 1.18L61.66 1.43L62.80 2.22L63.78 3.48L64.60 5.08L65.29 6.84L65.90 8.57L66.52 10.11L67.22 11.32L68.08 12.09L69.16 12.40L70.47 12.31L72.00 11.89L73.71 11.31L75.51 10.72L77.29 10.29L78.94 10.17L80.36 10.44L81.45 11.16L82.19 12.31L82.57 13.83L82.65 15.59L82.53 17.47L82.33 19.32L82.20 21.01L82.27 22.44L82.66 23.55L83.43 24.35L84.60 24.86L86.11 25.18L87.88 25.40L89.75 25.64L91.57 26.00L93.16 26.57L94.38 27.39L95.12 28.48L95.36 29.80L95.11 31.31L94.46 32.93L93.56 34.58L92.57 36.17L91.69 37.65L91.09 38.99L90.89 40.18L91.17 41.25L91.93 42.23L93.11 43.17L94.58 44.13L96.16 45.15L97.67 46.25L98.91 47.44L99.72 48.70L100.00 50.00Z'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M100.00 50.00L99.72 51.30L98.91 52.56L97.67 53.75L96.16 54.85L94.58 55.87L93.11 56.83L91.93 57.77L91.17 58.75L90.89 59.82L91.09 61.01L91.69 62.35L92.57 63.83L93.56 65.42L94.46 67.07L95.11 68.69L95.36 70.20L95.12 71.52L94.38 72.61L93.16 73.43L91.57 74.00L89.75 74.36L87.88 74.60L86.11 74.82L84.60 75.14L83.43 75.65L82.66 76.45L82.27 77.56L82.20 78.99L82.33 80.68L82.53 82.53L82.65 84.41L82.57 86.17L82.19 87.69L81.45 88.84L80.36 89.56L78.94 89.83L77.29 89.71L75.51 89.28L73.71 88.69L72.00 88.11L70.47 87.69L69.16 87.60L68.08 87.91L67.22 88.68L66.52 89.89L65.90 91.43L65.29 93.16L64.60 94.92L63.78 96.52L62.80 97.78L61.66 98.57L60.38 98.82L58.99 98.53L57.56 97.76L56.14 96.63L54.76 95.33L53.47 94.05L52.25 92.97L51.11 92.25L50.00 92.00L48.89 92.25L47.75 92.97L46.53 94.05L45.24 95.33L43.86 96.63L42.44 97.76L41.01 98.53L39.62 98.82L38.34 98.57L37.20 97.78L36.22 96.52L35.40 94.92L34.71 93.16L34.10 91.43L33.48 89.89L32.78 88.68L31.92 87.91L30.84 87.60L29.53 87.69L28.00 88.11L26.29 88.69L24.49 89.28L22.71 89.71L21.06 89.83L19.64 89.56L18.55 88.84L17.81 87.69L17.43 86.17L17.35 84.41L17.47 82.53L17.67 80.68L17.80 78.99L17.73 77.56L17.34 76.45L16.57 75.65L15.40 75.14L13.89 74.82L12.12 74.60L10.25 74.36L8.43 74.00L6.84 73.43L5.62 72.61L4.88 71.52L4.64 70.20L4.89 68.69L5.54 67.07L6.44 65.42L7.43 63.83L8.31 62.35L8.91 61.01L9.11 59.82L8.83 58.75L8.07 57.77L6.89 56.83L5.42 55.87L3.84 54.85L2.33 53.75L1.09 52.56L0.28 51.30L0.00 50.00L0.28 48.70L1.09 47.44L2.33 46.25L3.84 45.15L5.42 44.13L6.89 43.17L8.07 42.23L8.83 41.25L9.11 40.18L8.91 38.99L8.31 37.65L7.43 36.17L6.44 34.58L5.54 32.93L4.89 31.31L4.64 29.80L4.88 28.48L5.62 27.39L6.84 26.57L8.43 26.00L10.25 25.64L12.12 25.40L13.89 25.18L15.40 24.86L16.57 24.35L17.34 23.55L17.73 22.44L17.80 21.01L17.67 19.32L17.47 17.47L17.35 15.59L17.43 13.83L17.81 12.31L18.55 11.16L19.64 10.44L21.06 10.17L22.71 10.29L24.49 10.72L26.29 11.31L28.00 11.89L29.53 12.31L30.84 12.40L31.92 12.09L32.78 11.32L33.48 10.11L34.10 8.57L34.71 6.84L35.40 5.08L36.22 3.48L37.20 2.22L38.34 1.43L39.62 1.18L41.01 1.47L42.44 2.24L43.86 3.37L45.24 4.67L46.53 5.95L47.75 7.03L48.89 7.75L50.00 8.00L51.11 7.75L52.25 7.03L53.47 5.95L54.76 4.67L56.14 3.37L57.56 2.24L58.99 1.47L60.38 1.18L61.66 1.43L62.80 2.22L63.78 3.48L64.60 5.08L65.29 6.84L65.90 8.57L66.52 10.11L67.22 11.32L68.08 12.09L69.16 12.40L70.47 12.31L72.00 11.89L73.71 11.31L75.51 10.72L77.29 10.29L78.94 10.17L80.36 10.44L81.45 11.16L82.19 12.31L82.57 13.83L82.65 15.59L82.53 17.47L82.33 19.32L82.20 21.01L82.27 22.44L82.66 23.55L83.43 24.35L84.60 24.86L86.11 25.18L87.88 25.40L89.75 25.64L91.57 26.00L93.16 26.57L94.38 27.39L95.12 28.48L95.36 29.80L95.11 31.31L94.46 32.93L93.56 34.58L92.57 36.17L91.69 37.65L91.09 38.99L90.89 40.18L91.17 41.25L91.93 42.23L93.11 43.17L94.58 44.13L96.16 45.15L97.67 46.25L98.91 47.44L99.72 48.70L100.00 50.00Z'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+  }
+  .rosette-squiggle {
+    background-image: url("/squiggly-chip.svg");
+    background-size: 160% auto;
+    background-position: center;
+  }
+  .rosette::after {
+    content: "";
+    position: absolute;
+    inset: 11%;
+    border-radius: 9999px;
+    border: 1.5px dashed currentColor;
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  /* A slim scrollbar that stays visible, so a scrollable list looks scrollable. */
+  .thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #cfc9be transparent;
+  }
+
   /* Hide scrollbars on swipeable strips. */
   .no-scrollbar {
     scrollbar-width: none;
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Slow in the last 5 minutes, quick in the last minute. */
+  .ll-glow {
+    animation: ll-glow 2.2s ease-in-out infinite;
+  }
+  .ll-glow-fast {
+    animation: ll-glow 0.9s ease-in-out infinite;
   }
 
   /* Modal / bottom sheet, built on a native <dialog> (focus trap + Esc for free). */
@@ -151,6 +243,17 @@
   }
   .ll-dialog.ll-sheet[open] {
     animation: ll-slide-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+}
+
+/* A soft reddish gradient that breathes inside the timer pill when time is running low (no hard edge). */
+@keyframes ll-glow {
+  0%,
+  100% {
+    box-shadow: inset 0 0 22px 4px rgb(217 58 43 / 0);
+  }
+  50% {
+    box-shadow: inset 0 0 22px 4px rgb(217 58 43 / 0.42);
   }
 }
 

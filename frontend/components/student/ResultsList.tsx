@@ -9,7 +9,7 @@ import { GRADE_BANDS, type Grade } from "@/lib/grading";
 import { useAsync } from "@/lib/hooks/useAsync";
 import { cn, formatDate } from "@/lib/utils";
 import { AccountButton, StudentShell } from "@/components/student/StudentShell";
-import { Card, Chip, EmptyState, ErrorState, GradeTile, ProgressBar, Skeleton } from "@/components/ui";
+import { Card, Chip, EmptyState, ErrorState, GradeTile, ProgressBar, Skeleton, TileWatermark } from "@/components/ui";
 
 type Released = Extract<ResultListItem, { kind: "released" }>;
 type Pending = Extract<ResultListItem, { kind: "pending" }>;
@@ -105,13 +105,15 @@ function Overview({ data, subjects }: { data: StudentResults; subjects: SubjectR
     <div className="flex flex-col gap-4 md:flex-row md:items-stretch md:gap-5">
       {/* tiles: desktop only */}
       <div className="hidden max-w-[360px] flex-1 basis-[300px] grid-cols-2 gap-3 md:grid">
-        <div className="flex flex-col gap-0.5 rounded-3xl bg-brand-tint p-[18px]">
-          <span className="text-3xl font-black text-brand-dark">{data.releasedCount}</span>
-          <span className="text-sm font-extrabold text-brand-mid">Results released</span>
+        <div className="bg-fabric relative flex flex-col gap-0.5 overflow-hidden rounded-3xl bg-brand-tint p-[18px]">
+          <TileWatermark src="/star-green.png" />
+          <span className="relative text-3xl font-black text-brand-dark">{data.releasedCount}</span>
+          <span className="relative text-sm font-extrabold text-brand-mid">Results released</span>
         </div>
-        <div className="flex flex-col gap-0.5 rounded-3xl bg-amber p-[18px]">
-          <span className="text-3xl font-black text-amber-ink">{data.pendingCount}</span>
-          <span className="text-sm font-extrabold text-[#7a4d00]">Being marked</span>
+        <div className="bg-fabric relative flex flex-col gap-0.5 overflow-hidden rounded-3xl bg-amber p-[18px]">
+          <TileWatermark src="/pencil-amber.png" />
+          <span className="relative text-3xl font-black text-amber-ink">{data.pendingCount}</span>
+          <span className="relative text-sm font-extrabold text-[#7a4d00]">Being marked</span>
         </div>
         {data.latest && (
           <Card className="col-span-2 flex items-center gap-3.5 rounded-3xl p-[18px]">
@@ -173,7 +175,7 @@ function ReleasedRow({ item }: { item: Released }) {
   return (
     <Link
       href={`/student/results/${item.attemptId}`}
-      className="flex items-center gap-3.5 rounded-3xl border border-line bg-white px-4 py-3.5 text-ink no-underline transition hover:border-brand/30 hover:text-ink hover:shadow-sm md:gap-[18px] md:px-5 md:py-[18px]"
+      className="flex items-center gap-3.5 rounded-3xl border border-line bg-white px-4 py-3.5 text-ink no-underline transition hover:border-secondary/30 hover:text-ink hover:shadow-sm md:gap-[18px] md:px-5 md:py-[18px]"
     >
       <GradeTile grade={item.grade} size="md" tone="tint" className="md:size-[58px] md:rounded-[18px] md:text-[28px]" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5 md:gap-[3px]">
@@ -187,8 +189,8 @@ function ReleasedRow({ item }: { item: Released }) {
           New
         </Chip>
       )}
-      <span className="hidden text-sm font-extrabold text-brand md:inline">See feedback →</span>
-      <ArrowRight className="size-[18px] text-brand md:hidden" strokeWidth={3} aria-hidden />
+      <span className="hidden text-sm font-extrabold text-secondary md:inline">See feedback →</span>
+      <ArrowRight className="size-[18px] text-secondary md:hidden" strokeWidth={3} aria-hidden />
     </Link>
   );
 }

@@ -1,7 +1,8 @@
+import { addStressData } from "@/lib/mock/seed-large";
 import type { AnswerRecord, Attempt, DbState, Exam, ExamSession, Question, SchoolClass, User } from "@/lib/types";
 
 export const PASSWORD = "password";
-export const DB_VERSION = 3;
+export const DB_VERSION = 9;
 
 export const USERS: User[] = [
   { id: 1, name: "Aishath Rasheed", email: "aishath@ll.test", role: "tutor", honorific: "Ms" },
@@ -137,6 +138,12 @@ const UNIT_3_QUESTIONS: Question[] = [
   },
 ];
 
+/** Demo only: keep Unit 3 at 8 questions (raise DEMO_QUESTION_COUNT to pad it with repeats) by repeating the eight above (new ids and positions). */
+const DEMO_QUESTION_COUNT = 8;
+const UNIT_3_DEMO: Question[] = Array.from({ length: DEMO_QUESTION_COUNT }, (_, i) =>
+  i < UNIT_3_QUESTIONS.length ? UNIT_3_QUESTIONS[i] : { ...UNIT_3_QUESTIONS[i % UNIT_3_QUESTIONS.length], id: 101 + i, position: i + 1 },
+);
+
 /** An earlier, already-released exam so the Results screens have history to show. */
 const UNIT_2_QUESTIONS: Question[] = [
   {
@@ -211,13 +218,75 @@ const UNIT_2_QUESTIONS: Question[] = [
   },
 ];
 
+/** A draft the teacher can keep building: five questions, three of them approved. */
+const UNIT_4_QUESTIONS: Question[] = [
+  {
+    id: 301,
+    examId: 3,
+    position: 1,
+    kind: "mcq",
+    prompt: "Which of these is an example of a negative externality?",
+    points: 1,
+    options: [
+      { key: "A", text: "Noise from a nearby building site" },
+      { key: "B", text: "A free vaccination programme" },
+      { key: "C", text: "A new bus route" },
+      { key: "D", text: "A subsidy for solar panels" },
+    ],
+    answerKey: { kind: "mcq", correct: "A" },
+    approved: true,
+  },
+  {
+    id: 302,
+    examId: 3,
+    position: 2,
+    kind: "true_false",
+    prompt: "A public good is both non-rival and non-excludable.",
+    points: 1,
+    answerKey: { kind: "true_false", correct: true },
+    approved: true,
+  },
+  {
+    id: 303,
+    examId: 3,
+    position: 3,
+    kind: "true_false",
+    prompt: "A tax on a good with negative externalities always lowers the quantity traded.",
+    points: 1,
+    answerKey: { kind: "true_false", correct: true },
+    approved: true,
+  },
+  {
+    id: 304,
+    examId: 3,
+    position: 4,
+    kind: "fill_blank",
+    prompt: `When the market fails to allocate resources efficiently, this is called ${BLANK} failure.`,
+    points: 1,
+    answerKey: { kind: "fill_blank", accepted: ["market"] },
+    approved: false,
+  },
+  {
+    id: 305,
+    examId: 3,
+    position: 5,
+    kind: "written",
+    prompt: "Explain why the government might provide street lighting instead of leaving it to private firms.",
+    points: 4,
+    answerKey: { kind: "written", markingPoints: [] },
+    approved: false,
+  },
+];
+
 const EXAMS: Exam[] = [
-  { id: 1, title: "Unit 3 Test: Demand and Supply", ownerId: 1, timeLimitMinutes: 30, rules: RULES_UNIT_3, status: "published" },
-  { id: 2, title: "Unit 2 Test: Elasticity", ownerId: 1, timeLimitMinutes: 20, rules: "Calculators are allowed.", status: "published" },
+  { id: 1, title: "Unit 3 Test: Demand and Supply", ownerId: 1, timeLimitMinutes: 30, navigation: "any", rules: RULES_UNIT_3, status: "published", publishedAt: null },
+  { id: 2, title: "Unit 2 Test: Elasticity", ownerId: 1, timeLimitMinutes: 20, navigation: "any", rules: "Calculators are allowed.", status: "published", publishedAt: null },
+  { id: 3, title: "Unit 4 Test: Market Failure", ownerId: 1, timeLimitMinutes: 25, navigation: "any", rules: "", status: "draft", publishedAt: null },
 ];
 
 const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString();
 const DAY = 24 * 60 * 60 * 1000;
+const MIN = 60 * 1000;
 
 /**
  * Seed for student-side development. The final Laravel seeder follows the brief exactly
@@ -226,9 +295,11 @@ const DAY = 24 * 60 * 60 * 1000;
  */
 export function buildSeed(): DbState {
   const sessions: ExamSession[] = [
-    { id: 1, examId: 1, classId: 1, status: "open", resultsReleasedAt: null },
-    { id: 2, examId: 1, classId: 2, status: "not_open", resultsReleasedAt: null },
-    { id: 3, examId: 2, classId: 1, status: "closed", resultsReleasedAt: iso(-6 * DAY) },
+    { id: 1, examId: 1, classId: 1, status: "open", openedAt: iso(-50 * MIN), closedAt: null, resultsReleasedAt: null },
+    { id: 2, examId: 1, classId: 2, status: "not_open", openedAt: null, closedAt: null, resultsReleasedAt: null },
+    { id: 3, examId: 2, classId: 1, status: "closed", openedAt: iso(-7 * DAY - 10 * MIN), closedAt: iso(-7 * DAY + 40 * MIN), resultsReleasedAt: iso(-6 * DAY) },
+    { id: 4, examId: 3, classId: 1, status: "not_open", openedAt: null, closedAt: null, resultsReleasedAt: null },
+    { id: 5, examId: 3, classId: 2, status: "not_open", openedAt: null, closedAt: null, resultsReleasedAt: null },
   ];
 
   const unit2Start = iso(-7 * DAY);
@@ -246,6 +317,20 @@ export function buildSeed(): DbState {
       overallComment:
         "Good, steady work, Hawwa. You know your elasticity vocabulary well. Next time, take the extra minute to link each point back to the question.",
       resultViewedAt: iso(-5 * DAY),
+    },
+    {
+      // Mariyam has handed in Unit 3 and is waiting for her written answers to be marked.
+      id: 2,
+      sessionId: 1,
+      studentId: 5,
+      startedAt: iso(-35 * MIN),
+      deadlineAt: iso(-5 * MIN),
+      submittedAt: iso(-12 * MIN),
+      submitReason: "manual",
+      status: "submitted",
+      violationCount: 1,
+      overallComment: null,
+      resultViewedAt: null,
     },
   ];
 
@@ -269,18 +354,47 @@ export function buildSeed(): DbState {
       3,
       "Clear and correct on the revenue effect. Add why demand is elastic, for example that there are many close substitutes, to reach full marks.",
     ),
+    { attemptId: 2, questionId: 101, response: "A", flagged: false, awardedMarks: 1, feedback: null },
+    { attemptId: 2, questionId: 102, response: "C", flagged: false, awardedMarks: 0, feedback: null },
+    { attemptId: 2, questionId: 103, response: "false", flagged: false, awardedMarks: 1, feedback: null },
+    { attemptId: 2, questionId: 104, response: null, flagged: true, awardedMarks: 0, feedback: null },
+    { attemptId: 2, questionId: 105, response: "surplus", flagged: false, awardedMarks: 1, feedback: null },
+    { attemptId: 2, questionId: 106, response: "equilibrium", flagged: false, awardedMarks: 1, feedback: null },
+    {
+      attemptId: 2,
+      questionId: 107,
+      response:
+        "Petrol is a necessity in the Maldives because people rely on boats, cars and generators, so they keep buying it even when the price goes up. Also, there are very few substitutes for petrol.",
+      flagged: false,
+      awardedMarks: null,
+      feedback: null,
+    },
+    {
+      attemptId: 2,
+      questionId: 108,
+      response:
+        "Fish feed is a cost for fish farms. When it rises, farms supply less, so the supply curve shifts left. The price of farmed fish goes up and the quantity sold goes down.",
+      flagged: false,
+      awardedMarks: null,
+      feedback: null,
+    },
   ];
 
-  return {
+  const db: DbState = {
     version: DB_VERSION,
     users: USERS,
     classes: CLASSES,
     exams: EXAMS,
-    questions: [...UNIT_3_QUESTIONS, ...UNIT_2_QUESTIONS],
+    questions: [...UNIT_3_DEMO, ...UNIT_2_QUESTIONS, ...UNIT_4_QUESTIONS],
     sessions,
     attempts,
     answers,
-    violations: [],
-    nextAttemptId: 2,
+    violations: [{ attemptId: 2, at: iso(-22 * MIN), kind: "hidden" }],
+    nextAttemptId: 3,
   };
+
+  // Lots of extra classes, exams and submissions to stress the teacher screens. Turn off with NEXT_PUBLIC_STRESS_SEED=0.
+  if (process.env.NEXT_PUBLIC_STRESS_SEED !== "0") addStressData(db);
+  return db;
+
 }

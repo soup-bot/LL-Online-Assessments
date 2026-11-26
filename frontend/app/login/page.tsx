@@ -37,6 +37,13 @@ export default function LoginPage() {
     if (ready && user) router.replace(homeFor(user.role));
   }, [ready, user, router]);
 
+  // Sent here because the session ended (see AuthProvider).
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("expired")) {
+      setInfo("Your session ended, so we signed you out. Sign in again and pick up where you left off.");
+    }
+  }, []);
+
   async function onSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -104,7 +111,7 @@ export default function LoginPage() {
                   setError(null);
                   setInfo("Ask your school admin to reset your password. They manage everyone's accounts.");
                 }}
-                className="text-sm font-bold text-brand hover:text-brand-dark"
+                className="text-sm font-bold text-secondary hover:text-secondary-dark"
               >
                 Forgot it?
               </button>
@@ -137,7 +144,7 @@ export default function LoginPage() {
           {error && <Notice variant="error">{error}</Notice>}
           {info && <Notice variant="info">{info}</Notice>}
 
-          <Button type="submit" loading={busy} block className={cn("bg-squiggly h-[54px] text-[17px]", busy && "opacity-80")}>
+          <Button type="submit" loading={busy} block className={cn("h-[54px] text-[17px]", busy && "opacity-80")}>
             {busy ? "Signing in…" : "Sign in"}
             {!busy && <ArrowRight className="size-5" aria-hidden />}
           </Button>

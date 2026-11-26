@@ -3,7 +3,7 @@ import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const variants = {
-  info: { box: "bg-brand-soft text-brand-dark", Icon: Info },
+  info: { box: "bg-secondary-soft text-secondary-dark", Icon: Info },
   success: { box: "bg-mint text-mint-deep", Icon: CircleCheck },
   warn: { box: "bg-amber text-amber-ink", Icon: TriangleAlert },
   error: { box: "bg-rose text-rose-ink", Icon: CircleAlert },

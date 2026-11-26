@@ -101,7 +101,7 @@ export function EmptyState({
         className,
       )}
     >
-      <IconTile Icon={Icon} tone="bg-brand-tint text-brand" />
+      <IconTile Icon={Icon} tone="bg-secondary-soft text-secondary" />
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-black">{title}</h2>
         {children && <p className="text-sm font-semibold text-muted">{children}</p>}

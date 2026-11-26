@@ -3,7 +3,7 @@
 import type { StudentQuestion } from "@/lib/api-types";
 import { KIND_META } from "@/lib/question-kinds";
 import { cn, formatClock } from "@/lib/utils";
-import { statusOf, type Answers, type QuestionStatus, type Tally } from "@/components/student/exam/examStatus";
+import { chipTone, currentChip, statusOf, type Answers, type QuestionStatus, type Tally } from "@/components/student/exam/examStatus";
 import { Button, Card, Chip, Modal } from "@/components/ui";
 
 const statusWord: Record<QuestionStatus, string> = {
@@ -12,8 +12,8 @@ const statusWord: Record<QuestionStatus, string> = {
   empty: "not answered yet",
 };
 
-const statusChip: Record<QuestionStatus, { label: string; tone: "brand" | "amber" | "neutral" }> = {
-  answered: { label: "Answered", tone: "brand" },
+const statusChip: Record<QuestionStatus, { label: string; tone: "lilac" | "amber" | "neutral" }> = {
+  answered: { label: "Answered", tone: "lilac" },
   flagged: { label: "Come back", tone: "amber" },
   empty: { label: "Not yet", tone: "neutral" },
 };
@@ -21,7 +21,7 @@ const statusChip: Record<QuestionStatus, { label: string; tone: "brand" | "amber
 function CountChips({ tally }: { tally: Tally }) {
   return (
     <div className="flex flex-wrap gap-1.5">
-      <Chip tone="brand" size="lg">
+      <Chip tone="lilac" size="lg">
         {tally.answered} answered
       </Chip>
       {tally.flagged.length > 0 && (
@@ -62,11 +62,8 @@ export function QuestionGrid({ questions, answers, currentId, tally, onGo, onRev
               aria-label={`Question ${q.position}, ${statusWord[status]}`}
               aria-current={q.id === currentId ? "step" : undefined}
               className={cn(
-                "grid h-12 place-items-center rounded-2xl text-[15px] font-black transition active:scale-95",
-                status === "answered" && "bg-brand text-white hover:bg-brand-dark",
-                status === "flagged" && "bg-amber text-amber-ink shadow-[inset_0_0_0_2px_var(--color-amber-line)]",
-                status === "empty" && "bg-chip text-ink hover:bg-line",
-                q.id === currentId && "outline-[2.5px] outline-offset-2 outline-ink",
+                "grid h-12 place-items-center rounded-2xl text-[15px] font-black transition-colors hover:brightness-95",
+                q.id === currentId ? currentChip : chipTone[status],
               )}
             >
               {q.position}
@@ -76,7 +73,7 @@ export function QuestionGrid({ questions, answers, currentId, tally, onGo, onRev
       </nav>
       <ul className="flex flex-col gap-1.5 text-[13px] font-bold text-muted" aria-label="Legend">
         <li className="flex items-center gap-2">
-          <span aria-hidden className="size-3 rounded-full bg-brand" /> Answered
+          <span aria-hidden className="size-3 rounded-full bg-lilac-ink" /> Answered
         </li>
         <li className="flex items-center gap-2">
           <span aria-hidden className="size-3 rounded-full bg-amber-line" /> Marked to come back to
@@ -101,11 +98,10 @@ export function QuestionSheet({
   questions,
   answers,
   currentId,
-  tally,
   remainingSec,
   onGo,
   onSubmit,
-}: CommonProps & {
+}: Omit<CommonProps, "tally"> & {
   open: boolean;
   /** "list" opens from the header; "review" opens after the last question. */
   mode: "list" | "review";
@@ -116,21 +112,16 @@ export function QuestionSheet({
   const review = mode === "review";
   return (
     <Modal open={open} onClose={onClose} variant="sheet" labelledBy="sheet-title">
-      <div className="flex flex-col gap-3.5 px-[18px] pb-6 pt-3">
-        <span aria-hidden className="h-[5px] w-11 self-center rounded-full bg-[#ddd7cd]" />
+      <div className="flex flex-col gap-3.5 px-[18px] pb-6 pt-1">
         <div className="flex items-center justify-between gap-3">
           <h2 id="sheet-title" tabIndex={-1} data-autofocus className="text-[22px] font-black outline-none">
             {review ? "Ready to hand it in?" : "Your questions"}
           </h2>
-          <span className="flex h-9 items-center rounded-full bg-brand-tint px-3 text-base font-black tabular-nums text-brand-dark">
+          <span className="flex h-9 items-center rounded-full bg-secondary-soft px-3 text-base font-black tabular-nums text-secondary-dark">
             {formatClock(remainingSec)} left
           </span>
         </div>
-        {review ? (
-          <p className="text-sm font-bold text-muted">Tap a question to go back to it.</p>
-        ) : (
-          <CountChips tally={tally} />
-        )}
+        {review && <p className="text-sm font-bold text-muted">Tap a question to go back to it.</p>}
 
         <nav aria-label="Questions" className="flex flex-col gap-1.5">
           {questions.map((q, i) => {
@@ -144,7 +135,7 @@ export function QuestionSheet({
                 onClick={() => onGo(i)}
                 aria-current={q.id === currentId ? "step" : undefined}
                 className={cn(
-                  "flex min-h-12 items-center gap-3 rounded-2xl border border-line py-1.5 pl-1.5 pr-2.5 text-left transition active:scale-[0.99]",
+                  "flex min-h-12 items-center gap-3 rounded-2xl border border-line py-1.5 pl-1.5 pr-2.5 text-left",
                   q.id === currentId ? "bg-paper shadow-[inset_0_0_0_2px_var(--color-ink)]" : "bg-white",
                 )}
               >

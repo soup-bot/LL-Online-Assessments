@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, LogOut, Trophy } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { cn, initials } from "@/lib/utils";
-import { Button, Logo, Modal } from "@/components/ui";
+import { Button, LogoMark, Modal } from "@/components/ui";
+import { NavTabs } from "@/components/ui/NavTabs";
 
 type Tab = "exams" | "results";
 
@@ -15,11 +16,18 @@ const tabs: { id: Tab; href: string; label: string; Icon: typeof FileText }[] = 
   { id: "results", href: "/student/results", label: "Results", Icon: Trophy },
 ];
 
-function Avatar({ name, className }: { name: string; className?: string }) {
+/** Avatar colours by role, so staff and students are easy to tell apart at a glance. */
+const AVATAR_TONE = {
+  student: "bg-mint text-mint-deep",
+  tutor: "bg-peach-mid text-peach-ink",
+  admin: "bg-sky text-sky-deep",
+} as const;
+
+function Avatar({ name, className, role = "student" }: { name: string; className?: string; role?: keyof typeof AVATAR_TONE }) {
   return (
     <span
       aria-hidden
-      className={cn("grid shrink-0 place-items-center rounded-full bg-mint font-black text-mint-deep", className)}
+      className={cn("grid shrink-0 place-items-center rounded-full font-black", AVATAR_TONE[role], className)}
     >
       {initials(name)}
     </span>
@@ -41,13 +49,12 @@ export function AccountButton({ className }: { className?: string }) {
         aria-label={`Account: ${user.name}`}
         className={cn("rounded-full transition active:scale-95", className)}
       >
-        <Avatar name={user.name} className="size-11 text-[15px]" />
+        <Avatar name={user.name} role={user.role} className="size-11 text-[15px]" />
       </button>
       <Modal open={open} onClose={() => setOpen(false)} variant="sheet" labelledBy="account-title">
-        <div className="flex flex-col gap-4 p-5 pb-7">
-          <span aria-hidden className="mx-auto h-[5px] w-11 rounded-full bg-[#ddd7cd]" />
+        <div className="flex flex-col gap-4 px-5 pb-7 pt-1">
           <div className="flex items-center gap-3">
-            <Avatar name={user.name} className="size-12 text-base" />
+            <Avatar name={user.name} role={user.role} className="size-12 text-base" />
             <div>
               <h2 id="account-title" className="text-lg font-black">
                 {user.name}
@@ -71,46 +78,88 @@ export function AccountButton({ className }: { className?: string }) {
   );
 }
 
-function DesktopHeader({ active }: { active?: Tab }) {
+/** Desktop avatar: opens a small menu with the account name and Sign out. */
+export function AccountMenu({ className }: { className?: string }) {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const wrapper = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!wrapper.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        trigger.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  if (!user) return null;
 
   return (
-    <header className="hidden min-h-[72px] flex-wrap items-center gap-x-6 gap-y-3 border-b border-line-header bg-white px-7 py-3 md:flex">
-      <Link href="/student" aria-label="LL Assessments home" className="flex items-center">
-        <Logo />
-      </Link>
-      <nav aria-label="Main" className="flex flex-1 gap-1.5">
-        {tabs.map((t) => (
-          <Link
-            key={t.id}
-            href={t.href}
-            aria-current={active === t.id ? "page" : undefined}
-            className={cn(
-              "flex h-10 items-center rounded-full px-4 no-underline transition",
-              active === t.id ? "bg-brand-tint font-extrabold text-brand-dark" : "font-bold text-ink-2 hover:bg-chip hover:text-ink",
-            )}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
-      {user && (
-        <div className="flex items-center gap-2.5">
-          <Avatar name={user.name} className="size-10 text-sm" />
-          <span className="text-sm font-extrabold">{user.name}</span>
+    <div ref={wrapper} className={cn("relative", className)}>
+      <button
+        ref={trigger}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Account menu for ${user.name}`}
+        className="rounded-full transition hover:ring-4 hover:ring-secondary-ring/60 aria-expanded:ring-4 aria-expanded:ring-secondary-ring"
+      >
+        <Avatar name={user.name} role={user.role} className="size-10 text-sm" />
+      </button>
+
+      {open && (
+        <div
+          role="menu"
+          aria-label="Account"
+          className="absolute right-0 top-[calc(100%+10px)] z-40 w-64 origin-top-right overflow-hidden rounded-2xl border border-line bg-white p-1.5 shadow-xl"
+        >
+          <div className="px-3 pb-2.5 pt-2">
+            <p className="truncate text-sm font-black">{user.name}</p>
+            <p className="truncate text-xs font-semibold text-muted">{user.email}</p>
+          </div>
+          <div className="my-1 h-px bg-line" aria-hidden />
           <button
+            role="menuitem"
             type="button"
+            autoFocus
             onClick={() => {
               logout();
               router.replace("/login");
             }}
-            className="ml-1.5 rounded-full px-2 py-1 text-sm font-bold text-brand hover:bg-chip"
+            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-extrabold hover:bg-chip"
           >
-            Sign out
+            <LogOut className="size-4" aria-hidden /> Sign out
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function DesktopHeader({ active }: { active?: Tab }) {
+  return (
+    <header className="hidden border-b border-line-header bg-white md:block">
+      <div className="mx-auto flex min-h-[72px] w-full max-w-[1140px] flex-wrap items-center gap-x-6 gap-y-3 px-7 py-3">
+      <Link href="/student" aria-label="LL Assessments home" className="flex items-center">
+        <LogoMark />
+      </Link>
+      <NavTabs tabs={tabs} active={active} className="flex-1" />
+      <AccountMenu />
+      </div>
     </header>
   );
 }
@@ -127,8 +176,8 @@ function BottomNav({ active }: { active?: Tab }) {
           href={href}
           aria-current={active === id ? "page" : undefined}
           className={cn(
-            "flex h-[50px] items-center justify-center gap-2 rounded-full no-underline transition",
-            active === id ? "bg-brand-tint font-black text-brand-dark" : "font-extrabold text-ink-2",
+            "flex h-[50px] items-center justify-center gap-2 rounded-full no-underline transition active:scale-95",
+            active === id ? "bg-secondary-soft font-black text-secondary-dark" : "font-extrabold text-ink-2",
           )}
         >
           <Icon className="size-[18px]" strokeWidth={2.4} aria-hidden />

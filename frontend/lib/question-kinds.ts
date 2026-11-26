@@ -16,7 +16,7 @@ export const KIND_META: Record<
     fg: string;
   }
 > = {
-  mcq: { label: "Multiple choice", badge: "MC", tag: "Choose one answer", bg: "bg-lilac", fg: "text-lilac-ink" },
+  mcq: { label: "Multiple choice", badge: "MC", tag: "Choose one answer", bg: "bg-pink", fg: "text-pink-ink" },
   true_false: { label: "True or false", badge: "TF", tag: "True or false?", bg: "bg-sky", fg: "text-sky-ink" },
   fill_blank: { label: "Fill in the blank", badge: "__", tag: "Complete the sentence", bg: "bg-mint", fg: "text-mint-ink" },
   written: { label: "Written answer", badge: "Ab", tag: "Write your answer", bg: "bg-peach", fg: "text-peach-ink" },
