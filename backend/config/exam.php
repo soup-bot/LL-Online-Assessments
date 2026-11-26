@@ -36,6 +36,9 @@ return [
         ],
     ],
 
+    // Password given to a new account when the admin doesn't choose one. Change it in .env for any real deployment.
+    'default_password' => env('DEFAULT_USER_PASSWORD', 'password'),
+
     // List endpoints: default and largest page size.
     'per_page' => 10,
     'max_per_page' => 100,

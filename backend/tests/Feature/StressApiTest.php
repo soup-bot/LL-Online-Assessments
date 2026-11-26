@@ -77,4 +77,17 @@ class StressApiTest extends TestCase
         $this->assertLessThan(40, $this->queries("/api/v1/tutor/exams/{$mock->exam_id}/sessions"));
         $this->getJson("/api/v1/tutor/exams/{$mock->exam_id}/sessions")->assertJsonCount(11, 'classes');
     }
+
+    public function test_the_admin_lists_use_a_fixed_number_of_queries(): void
+    {
+        Sanctum::actingAs(User::where('email', 'admin@ll.test')->firstOrFail());
+
+        $this->assertLessThan(12, $this->queries('/api/v1/admin/users?per_page=100'));
+        $this->assertLessThan(15, $this->queries('/api/v1/admin/classes?per_page=100'));
+        $this->assertLessThan(12, $this->queries('/api/v1/admin/students?per_page=100'));
+        $this->assertLessThan(25, $this->queries('/api/v1/admin/exams?per_page=100'));
+
+        $this->getJson('/api/v1/admin/users?per_page=100')->assertJsonPath('meta.total', fn ($n) => $n > 280)->assertJsonCount(100, 'users');
+        $this->getJson('/api/v1/admin/exams?per_page=100')->assertJsonPath('meta.total', fn ($n) => $n > 150);
+    }
 }

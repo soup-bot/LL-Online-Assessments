@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Student;
 use App\Http\Controllers\Tutor;
@@ -76,5 +77,17 @@ Route::middleware('auth:sanctum')->group(function () {
         });
     });
 
-    // Next: role:admin for /admin.
+    // Admins manage accounts and classes and see every exam.
+    Route::middleware('role:admin')->prefix('admin')->group(function () {
+        Route::get('/users', [Admin\UserController::class, 'index']);
+        Route::post('/users', [Admin\UserController::class, 'store']);
+        Route::patch('/users/{user}', [Admin\UserController::class, 'update'])->whereNumber('user');
+
+        Route::get('/classes', [Admin\ClassController::class, 'index']);
+        Route::post('/classes', [Admin\ClassController::class, 'store']);
+        Route::patch('/classes/{class}', [Admin\ClassController::class, 'update'])->whereNumber('class');
+
+        Route::get('/students', [Admin\StudentController::class, 'index']);
+        Route::get('/exams', [Admin\ExamController::class, 'index']);
+    });
 });
