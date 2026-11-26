@@ -6,6 +6,7 @@ import { Wrench, X } from "lucide-react";
 import { api, toApiError } from "@/lib/api";
 import { homeFor, useAuth } from "@/lib/auth";
 import { announceDemoChange } from "@/lib/demo-events";
+import { API_URL, USE_MOCK } from "@/lib/env";
 import { PASSWORD, USERS } from "@/lib/mock/seed";
 import type { ExamSession } from "@/lib/types";
 
@@ -94,6 +95,7 @@ function Panel() {
             </select>
           </label>
 
+          {USE_MOCK && (
           <div className="flex flex-col gap-1.5">
             <span className="font-extrabold">Unit 3 Test, by class</span>
             {sessions.map((s) => (
@@ -113,6 +115,7 @@ function Panel() {
               </label>
             ))}
           </div>
+          )}
 
           <label className="flex items-center gap-2 font-extrabold">
             <input
@@ -134,7 +137,7 @@ function Panel() {
             Ignore leaving the exam window
           </label>
 
-          {attemptId && (
+          {USE_MOCK && attemptId && (
             <div className="flex flex-col gap-1.5">
               <span className="font-extrabold">Timer for this exam</span>
               <div className="flex gap-1.5">
@@ -165,6 +168,8 @@ function Panel() {
             Expire my sign-in
           </button>
 
+          {USE_MOCK && (
+          <>
           <button
             type="button"
             onClick={() => act(() => `Marked and released: ${api.dev.teacherFinish().title}`)}
@@ -186,6 +191,15 @@ function Panel() {
           >
             Reset demo data
           </button>
+          </>
+          )}
+
+          {!USE_MOCK && (
+            <p className="rounded-xl bg-paper p-2.5 text-xs font-bold leading-relaxed text-ink-2">
+              Connected to the API at {API_URL}. To reset the data, run{" "}
+              <code className="font-mono">php artisan migrate:fresh --seed --seeder=DemoSeeder</code> in backend/.
+            </p>
+          )}
 
           {message && (
             <p role="status" className="rounded-xl bg-paper p-2.5 text-xs font-bold text-ink-2">

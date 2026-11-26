@@ -1,5 +1,6 @@
 <?php
 
+use App\Exceptions\ApiException;
 use App\Http\Middleware\EnsureRole;
 use App\Support\ApiErrors;
 use Illuminate\Foundation\Application;
@@ -19,6 +20,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias(['role' => EnsureRole::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // A refused request (wrong password, already handed in...) is the client's mistake, not a crash: keep it out of the error log.
+        $exceptions->dontReport(ApiException::class);
+
         // Everything under /api answers in JSON with the same { code, message, errors } shape.
         $isApi = fn (Request $request) => $request->is('api/*') || $request->expectsJson();
 

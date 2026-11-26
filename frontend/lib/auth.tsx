@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { UNAUTHORIZED_EVENT, api, getCurrentUser } from "@/lib/api";
+import { USER_KEY } from "@/lib/http";
 import { SESSION_KEY } from "@/lib/mock/db";
 import type { User } from "@/lib/types";
 
@@ -27,7 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Keep several tabs in step when someone signs in or out in one of them.
     const onStorage = (e: StorageEvent) => {
-      if (e.key === SESSION_KEY || e.key === null) setUser(getCurrentUser());
+      if (e.key === SESSION_KEY || e.key === USER_KEY || e.key === null) setUser(getCurrentUser());
     };
     window.addEventListener("storage", onStorage);
 

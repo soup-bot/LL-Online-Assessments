@@ -29,6 +29,7 @@ const errorKinds: Record<ApiErrorCode | "default", { Icon: LucideIcon; title: st
   conflict: { Icon: TriangleAlert, title: "That's already done" },
   expired: { Icon: TriangleAlert, title: "Time's up" },
   validation: { Icon: TriangleAlert, title: "Something isn't right" },
+  throttled: { Icon: TriangleAlert, title: "Slow down a little" },
   default: { Icon: TriangleAlert, title: "Something went wrong" },
 };
 

@@ -21,7 +21,10 @@ import type {
   SyncInfo,
   ViolationOutcome,
 } from "@/lib/api-types";
+import { currentStoredUser, realAuth, realStudent } from "@/lib/api-real";
 import { GLOBAL_RULES, MAX_VIOLATIONS, SAVE_GRACE_MS } from "@/lib/config";
+import { USE_MOCK } from "@/lib/env";
+import { clearAuth } from "@/lib/http";
 import { gradeFor, hasAnswer, markObjective, percentOf } from "@/lib/grading";
 import {
   isSimulatingOffline,
@@ -50,33 +53,9 @@ import { firstName, initials, subjectShort, subjectTitle, teacherLabel } from "@
 
 /* ------------------------------------------------------------------ errors */
 
-export type ApiErrorCode =
-  | "network"
-  | "unauthorized"
-  | "forbidden"
-  | "not_found"
-  | "conflict"
-  | "expired"
-  | "validation";
-
-export class ApiError extends Error {
-  readonly code: ApiErrorCode;
-
-  constructor(code: ApiErrorCode, message: string) {
-    super(message);
-    this.name = "ApiError";
-    this.code = code;
-  }
-}
-
-/** Anything thrown becomes an ApiError so screens only handle one shape. */
-export function toApiError(error: unknown): ApiError {
-  if (error instanceof ApiError) return error;
-  return new ApiError("network", "Something went wrong on our side. Please try again.");
-}
-
-/** Fired whenever the API reports the session has ended. */
-export const UNAUTHORIZED_EVENT = "ll-unauthorized";
+// Defined in their own module so the real HTTP client can use them too; re-exported for the screens.
+export { ApiError, toApiError, UNAUTHORIZED_EVENT, type ApiErrorCode } from "@/lib/api-error";
+import { ApiError, UNAUTHORIZED_EVENT } from "@/lib/api-error";
 
 /* --------------------------------------------------------------- plumbing */
 
@@ -317,11 +296,12 @@ function correctAnswerText(q: Question): string | null {
 /* --------------------------------------------------------------------- API */
 
 export function getCurrentUser(): User | null {
+  if (!USE_MOCK) return currentStoredUser();
   const id = sessionUserId();
   return id == null ? null : (readDb().users.find((u) => u.id === id) ?? null);
 }
 
-export const api = {
+const mockApi = {
   auth: {
     async login(email: string, password: string): Promise<User> {
       return call(() => {
@@ -767,6 +747,25 @@ export const api = {
     },
   },
 };
+
+/**
+ * What the screens import. By default the auth and student calls go to the Laravel API; the teacher
+ * and admin calls (in api-staff.ts) and the demo-tools helpers still run on the in-browser data.
+ */
+export const api = USE_MOCK
+  ? mockApi
+  : {
+      ...mockApi,
+      auth: realAuth,
+      student: realStudent,
+      dev: {
+        ...mockApi.dev,
+        /** Forget the token so the next call is refused, like an expired sign-in. */
+        expireSession(): void {
+          clearAuth();
+        },
+      },
+    };
 
 function submittedSummary(db: DbState, attempt: Attempt, user: User): SubmittedSummary {
   const session = sessionOf(db, attempt);

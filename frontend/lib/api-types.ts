@@ -113,6 +113,8 @@ export interface AttemptState {
 export interface SaveAnswerPatch {
   response?: string | null;
   flagged?: boolean;
+  /** When the student made this edit (ISO time). The server ignores a save older than the one it holds. */
+  at?: string;
 }
 
 export interface SyncInfo {

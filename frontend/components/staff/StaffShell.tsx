@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { FileText, PenLine, School, UserRound, Users } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { USE_MOCK } from "@/lib/env";
 import { tutorApi } from "@/lib/api-staff";
 import { useAsync } from "@/lib/hooks/useAsync";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,11 @@ export function StaffShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="bg-dotgrid flex min-h-dvh flex-col">
+      {!USE_MOCK && (
+        <p className="bg-amber px-4 py-1.5 text-center text-xs font-extrabold text-amber-ink">
+          Teacher and admin screens still show demo data. They connect to the API next.
+        </p>
+      )}
       <header className="border-b border-line-header bg-white">
         <div className="mx-auto flex min-h-[64px] w-full max-w-[1180px] flex-wrap items-center gap-x-5 gap-y-1 px-4 py-2.5 md:min-h-[72px] md:gap-x-6 md:px-7 md:py-3">
           <Link href={admin ? "/admin" : "/tutor"} aria-label="LL Assessments home" className="flex items-center gap-3 no-underline">

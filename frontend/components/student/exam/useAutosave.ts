@@ -139,7 +139,8 @@ export function useAutosave({ attemptId, initial, onSync, onFatal }: Options) {
         [questionId]: { response: prev[questionId]?.response ?? null, flagged: prev[questionId]?.flagged ?? false, ...patch },
       }));
       const existing = pending.current.get(questionId);
-      pending.current.set(questionId, { patch: { ...existing?.patch, ...patch }, version: ++version.current });
+      // The time of the edit travels with it, so a retry that lands late can't overwrite newer typing.
+      pending.current.set(questionId, { patch: { ...existing?.patch, ...patch, at: new Date().toISOString() }, version: ++version.current });
       persist();
       setStatus("saving");
       window.clearTimeout(debounce.current);
