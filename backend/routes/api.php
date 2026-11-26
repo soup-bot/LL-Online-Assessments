@@ -1,6 +1,6 @@
 <?php
 
-use Illuminate\Http\Request;
+use App\Http\Controllers\Auth\AuthController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/health', fn () => response()->json(['status' => 'ok', 'time' => now()->toIso8601String()]));
 
+Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
+
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/auth/me', fn (Request $request) => $request->user());
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::get('/auth/me', [AuthController::class, 'me']);
+
+    // Next: Route::middleware('role:student')->prefix('student'), role:tutor,admin for /tutor, role:admin for /admin.
 });

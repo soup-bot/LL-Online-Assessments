@@ -2,24 +2,17 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
-     * Seed the application's database.
+     * `php artisan db:seed` loads exactly the scenario in the brief. For more:
+     *   --class=DemoSeeder    the brief plus the story the frontend mock tells (open exam, released result)
+     *   --class=StressSeeder  the demo plus a large school for testing lists and paging
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        $this->call(BriefSeeder::class);
     }
 }

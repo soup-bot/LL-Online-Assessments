@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureRole;
 use App\Support\ApiErrors;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -15,7 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias(['role' => EnsureRole::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Everything under /api answers in JSON with the same { code, message, errors } shape.
