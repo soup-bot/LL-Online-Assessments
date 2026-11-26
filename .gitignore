@@ -1,1 +1,5 @@
 docs/
+
+# Design exports (reference only, not part of the app)
+/frontend/public/LL Exam Question Screens.html
+/frontend/public/Teacher and Admin.html
