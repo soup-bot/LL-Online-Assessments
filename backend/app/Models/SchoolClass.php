@@ -54,6 +54,18 @@ class SchoolClass extends Model
         $this->students()->attach($student->id, ['subject_code' => $this->subject_code]);
     }
 
+    /** "IGCSE Economics, Batch A" -> "IGCSE Economics". */
+    public function subjectTitle(): string
+    {
+        return trim(explode(',', $this->name)[0]);
+    }
+
+    /** "IGCSE Economics" -> "Economics". */
+    public function subjectShort(): string
+    {
+        return preg_replace('/^(IGCSE|IAL|O Level|A Level)\s+/i', '', $this->subjectTitle());
+    }
+
     /** "IGCSE Economics, Batch A" -> "Batch A". */
     public function batch(): string
     {

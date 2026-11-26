@@ -122,6 +122,14 @@ export function profileOf(db: DbState, user: User): StudentProfile {
     firstName: firstName(user.name),
     initials: initials(user.name),
     className,
+    classes: classes.map((c) => ({
+      id: c.id,
+      name: c.name,
+      subjectCode: c.subjectCode,
+      subjectName: subjectTitle(c),
+      subjectShort: subjectShort(c),
+      batch: c.name.split(",")[1]?.trim() ?? c.name,
+    })),
   };
 }
 

@@ -3,12 +3,27 @@ import type { AttemptStatus, QuestionKind, SubmitReason } from "@/lib/types";
 
 /** Shapes the student screens consume. The Laravel resources will return the same JSON. */
 
+export interface StudentClass {
+  id: number;
+  name: string;
+  subjectCode: string;
+  /** "IGCSE Economics" */
+  subjectName: string;
+  /** "Economics" */
+  subjectShort: string;
+  /** "Batch A" */
+  batch: string;
+}
+
 export interface StudentProfile {
   id: number;
   name: string;
   firstName: string;
   initials: string;
+  /** A short label for the greeting. Use `classes` for anything structured. */
   className: string;
+  /** Every class the student sits in: several subjects, one class in each. */
+  classes: StudentClass[];
 }
 
 export interface ExamCard {

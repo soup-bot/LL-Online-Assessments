@@ -45,6 +45,45 @@ class User extends Authenticatable
         return $this->role === Role::Student;
     }
 
+    public function firstName(): string
+    {
+        return explode(' ', trim($this->name))[0];
+    }
+
+    /** "Aishath Rasheed" -> "AR". */
+    public function initials(): string
+    {
+        $parts = preg_split('/\s+/', trim($this->name), -1, PREG_SPLIT_NO_EMPTY);
+        if (count($parts) === 0) {
+            return '?';
+        }
+        if (count($parts) === 1) {
+            return mb_strtoupper(mb_substr($parts[0], 0, 2));
+        }
+
+        return mb_strtoupper(mb_substr($parts[0], 0, 1).mb_substr($parts[count($parts) - 1], 0, 1));
+    }
+
+    /** "Ms Aishath" for a teacher with a title, otherwise the full name (used in student-facing copy). */
+    public function teacherLabel(): string
+    {
+        return $this->honorific ? $this->honorific.' '.$this->firstName() : $this->name;
+    }
+
+    /**
+     * Where a student sits, for the greeting under their name: the class itself when there is one,
+     * or "Economics (Batch A) · Business Studies (Batch C)" when they take several subjects.
+     */
+    public function classLabel(): string
+    {
+        $classes = $this->classes;
+        if ($classes->count() <= 1) {
+            return $classes->first()?->name ?? '';
+        }
+
+        return $classes->map(fn (SchoolClass $c) => $c->subjectShort().' ('.$c->batch().')')->implode(' · ');
+    }
+
     /** Classes this teacher teaches. */
     public function classesTaught(): HasMany
     {

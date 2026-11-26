@@ -7,6 +7,7 @@ use Dedoc\Scramble\Support\Generator\OpenApi;
 use Dedoc\Scramble\Support\Generator\SecurityScheme;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -20,6 +21,9 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Responses are plain objects, not wrapped in { data }, to match the frontend's types.
+        JsonResource::withoutWrapping();
+
         // Five sign-in attempts a minute for one email from one address.
         // The docs page gets an Authorize button for the Bearer token returned by /auth/login.
         Scramble::afterOpenApiGenerated(function (OpenApi $openApi) {
