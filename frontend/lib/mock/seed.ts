@@ -1,8 +1,7 @@
-import { addStressData } from "@/lib/mock/seed-large";
 import type { AnswerRecord, Attempt, DbState, Exam, ExamSession, Question, SchoolClass, User } from "@/lib/types";
 
 export const PASSWORD = "password";
-export const DB_VERSION = 9;
+export const DB_VERSION = 10;
 
 export const USERS: User[] = [
   { id: 1, name: "Aishath Rasheed", email: "aishath@ll.test", role: "tutor", honorific: "Ms" },
@@ -393,8 +392,6 @@ export function buildSeed(): DbState {
     nextAttemptId: 3,
   };
 
-  // Lots of extra classes, exams and submissions to stress the teacher screens. Turn off with NEXT_PUBLIC_STRESS_SEED=0.
-  if (process.env.NEXT_PUBLIC_STRESS_SEED !== "0") addStressData(db);
   return db;
 
 }

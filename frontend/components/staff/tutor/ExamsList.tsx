@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp, ChevronsUpDown, Hourglass, Pencil, Plus, Radio, Search, Send, Sparkles, Trophy, type LucideIcon } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { tutorApi } from "@/lib/api-staff";
-import type { ExamStage, TutorExamRow, TutorHome } from "@/lib/staff-types";
+import type { ExamFilter, ExamSort, ExamStage, TutorExamRow } from "@/lib/staff-types";
 import { useAsync } from "@/lib/hooks/useAsync";
+import { useDebounced } from "@/lib/hooks/useDebounced";
 import { cn, plural } from "@/lib/utils";
 import { FilterPill, MiniProgress, PageHeader, Pagination, Select, StatusChip, TiltTile, inputClass } from "@/components/staff/bits";
 import { StaffMain } from "@/components/staff/StaffShell";
@@ -15,24 +16,9 @@ import { useToast } from "@/components/staff/Toast";
 import { Button, ButtonLink, Card, EmptyState, ErrorState, Skeleton, TileWatermark } from "@/components/ui";
 import type { ChipTone } from "@/components/ui/Chip";
 
-type Filter = "all" | "drafts" | "published" | "marking";
-type SortKey = "attention" | "recent" | "name" | "progress";
-type SortState = { key: SortKey; dir: "asc" | "desc" };
+type SortState = { key: ExamSort; dir: "asc" | "desc" };
 
-/** Exams shown at first, and added each time "Show more" is pressed. */
-const PAGE = 10;
-
-const STAGE_ORDER: Record<ExamStage, number> = { live: 0, marking: 1, draft: 2, ready: 3, released: 4 };
-
-/** Ascending order for each column: "attention" puts what needs the teacher first. */
-const SORTS: Record<SortKey, (a: TutorExamRow, b: TutorExamRow) => number> = {
-  attention: (a, b) => b.toMark - a.toMark || STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || b.id - a.id,
-  recent: (a, b) => b.id - a.id,
-  name: (a, b) => a.title.localeCompare(b.title),
-  progress: (a, b) => progressOf(a).value - progressOf(b).value,
-};
-
-const FILTERS: { id: Filter; label: string }[] = [
+const FILTERS: { id: ExamFilter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "drafts", label: "Drafts" },
   { id: "published", label: "Published" },
@@ -47,48 +33,38 @@ const STAGE: Record<ExamStage, { Icon: LucideIcon; tile: string; chip: { tone: C
   released: { Icon: Trophy, tile: "bg-secondary-soft text-secondary", chip: { tone: "mint", label: "Results released" } },
 };
 
+/**
+ * The teacher's exams. The server searches, filters, sorts and pages them, so a teacher with
+ * hundreds of exams still receives one page at a time.
+ */
 export function ExamsListScreen() {
-  const { data, error, loading, reload } = useAsync(() => tutorApi.home(), []);
-
-  return (
-    <>
-      <StaffMain>
-        {loading && <ListSkeleton />}
-        {error && <ErrorState code={error.code} message={error.message} onRetry={reload} backHref="/login" backLabel="Back to sign in" />}
-        {data && <ListContent data={data} />}
-      </StaffMain>
-    </>
-  );
-}
-
-function ListContent({ data }: { data: TutorHome }) {
   const router = useRouter();
   const toast = useToast();
-  // Start on what needs the teacher most: exams with submissions waiting to be marked.
-  const [filter, setFilter] = useState<Filter>(data.stats.toMark > 0 ? "marking" : "all");
+
+  // null until the teacher picks one: then the list opens on what needs them most (exams waiting to be marked).
+  const [chosen, setChosen] = useState<ExamFilter | null>(null);
+  const [text, setText] = useState("");
+  const q = useDebounced(text.trim(), 300);
+  const [sort, setSort] = useState<SortState>({ key: "attention", dir: "asc" });
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
   const [starting, setStarting] = useState<"new" | "import" | null>(null);
 
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortState>({ key: "attention", dir: "asc" });
-  // Desktop pages through the table; phones keep adding cards with "Show more".
-  const [limit, setLimit] = useState(PAGE);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(PAGE);
-  const resetPaging = () => {
-    setLimit(PAGE);
+  const filter = chosen ?? "all";
+  const { data, error, loading, reload } = useAsync(
+    () => tutorApi.home({ filter, q, sort: sort.key, dir: sort.dir, page: page + 1, perPage: pageSize }),
+    [filter, q, sort.key, sort.dir, page, pageSize],
+  );
+
+  // First time in: if anything is waiting to be marked, start on that filter.
+  useEffect(() => {
+    if (chosen === null && data && data.stats.toMark > 0) setChosen("marking");
+  }, [chosen, data]);
+
+  const pick = (f: ExamFilter) => {
+    setChosen(f);
     setPage(0);
   };
-
-  const labels = [...new Set(data.exams.flatMap((e) => e.classes.map((c) => c.label)))];
-  const q = query.trim().toLowerCase();
-  const matched = data.exams
-    .filter((e) => (filter === "all" ? true : filter === "drafts" ? e.status === "draft" : filter === "published" ? e.status === "published" : e.toMark > 0))
-    .filter((e) => !q || e.title.toLowerCase().includes(q))
-    .sort((a, b) => (sort.dir === "asc" ? 1 : -1) * SORTS[sort.key](a, b));
-  const shown = matched.slice(0, limit);
-  const pages = Math.max(1, Math.ceil(matched.length / pageSize));
-  const current = Math.min(page, pages - 1);
-  const pageRows = matched.slice(current * pageSize, (current + 1) * pageSize);
 
   async function start(mode: "new" | "import") {
     setStarting(mode);
@@ -101,15 +77,15 @@ function ListContent({ data }: { data: TutorHome }) {
     }
   }
 
+  const stats = data?.stats;
+  const exams = data?.exams ?? [];
+  const total = data?.meta.total ?? 0;
+
   return (
-    <>
+    <StaffMain>
       <PageHeader
         title="My exams"
-        subtitle={
-          labels.length
-            ? `Your classes: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ` and ${labels.length - 3} more` : ""}`
-            : "Build an exam, then open it for a class."
-        }
+        subtitle="Build an exam, then open it for a class."
         actions={
           <>
             <Button variant="secondary" onClick={() => void start("import")} loading={starting === "import"} disabled={starting != null}>
@@ -123,68 +99,68 @@ function ListContent({ data }: { data: TutorHome }) {
       />
 
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-        <StatTile src="/clock-green.png" tone="bg-mint" value={data.stats.open} label="Open right now" valueClass="text-mint-deep" labelClass="text-mint-deep" />
-        <StatTile src="/pencil-amber.png" tone="bg-amber" value={data.stats.toMark} label={data.stats.toMark === 1 ? "Submission to mark" : "Submissions to mark"} valueClass="text-amber-ink" labelClass="text-[#7a4d00]" />
-        <StatTile src="/question-blue.png" tone="bg-sky" value={data.stats.drafts} label={data.stats.drafts === 1 ? "Draft in progress" : "Drafts in progress"} valueClass="text-sky-deep" labelClass="text-sky-deep" />
+        {stats ? (
+          <>
+            <StatTile src="/clock-green.png" tone="bg-mint" value={stats.open} label="Open right now" valueClass="text-mint-deep" labelClass="text-mint-deep" />
+            <StatTile src="/pencil-amber.png" tone="bg-amber" value={stats.toMark} label={stats.toMark === 1 ? "Submission to mark" : "Submissions to mark"} valueClass="text-amber-ink" labelClass="text-[#7a4d00]" />
+            <StatTile src="/question-blue.png" tone="bg-sky" value={stats.drafts} label={stats.drafts === 1 ? "Draft in progress" : "Drafts in progress"} valueClass="text-sky-deep" labelClass="text-sky-deep" />
+          </>
+        ) : (
+          [0, 1, 2].map((i) => <Skeleton key={i} className="h-24 rounded-3xl" />)
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5">
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filter exams">
           {FILTERS.map((f) => (
-            <FilterPill
-              key={f.id}
-              active={filter === f.id}
-              onClick={() => {
-                setFilter(f.id);
-                resetPaging();
-              }}
-            >
+            <FilterPill key={f.id} active={filter === f.id} onClick={() => pick(f.id)}>
               {f.label}
             </FilterPill>
           ))}
         </div>
-        {(
-          <div className="ml-auto flex w-full flex-wrap items-center gap-2.5 md:w-auto md:flex-nowrap">
-            <label className="sr-only" htmlFor="exam-search">Search exams</label>
-            <div className="relative min-w-0 flex-1 md:w-64 md:flex-none">
-              <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={3} />
-              <input
-                id="exam-search"
-                type="search"
-                value={query}
-                placeholder="Search exams"
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  resetPaging();
-                }}
-                className={cn(inputClass, "h-10 rounded-full pl-10 pr-4 text-sm")}
-              />
-            </div>
-            <label className="sr-only" htmlFor="exam-sort">Sort exams</label>
-            <Select id="exam-sort" value={sort.key} onChange={(e) => setSort({ key: e.target.value as SortKey, dir: "asc" })} className="h-10 w-auto! rounded-full text-sm md:hidden">
-              <option value="attention">Needs attention first</option>
-              <option value="recent">Newest first</option>
-              <option value="name">Name A to Z</option>
-            </Select>
+        <div className="ml-auto flex w-full flex-wrap items-center gap-2.5 md:w-auto md:flex-nowrap">
+          <label className="sr-only" htmlFor="exam-search">Search exams</label>
+          <div className="relative min-w-0 flex-1 md:w-64 md:flex-none">
+            <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={3} />
+            <input
+              id="exam-search"
+              type="search"
+              value={text}
+              placeholder="Search exams"
+              onChange={(e) => {
+                setText(e.target.value);
+                setPage(0);
+              }}
+              className={cn(inputClass, "h-10 rounded-full pl-10 pr-4 text-sm")}
+            />
           </div>
-        )}
+          <label className="sr-only" htmlFor="exam-sort">Sort exams</label>
+          <Select id="exam-sort" value={sort.key} onChange={(e) => { setSort({ key: e.target.value as ExamSort, dir: "asc" }); setPage(0); }} className="h-10 w-auto! rounded-full text-sm md:hidden">
+            <option value="attention">Needs attention first</option>
+            <option value="recent">Newest first</option>
+            <option value="name">Name A to Z</option>
+          </Select>
+        </div>
       </div>
 
-      {data.exams.length === 0 ? (
-        <EmptyState title="No exams yet" Icon={Pencil}>
-          Start a new exam, or let an AI tool turn your Word file into one.
+      {error && <ErrorState code={error.code} message={error.message} onRetry={reload} backHref="/login" backLabel="Back to sign in" />}
+      {!error && !data && <ListSkeleton />}
+      {!error && data && total === 0 && (
+        <EmptyState title={q || filter !== "all" ? "Nothing here" : "No exams yet"} Icon={Pencil}>
+          {q || filter !== "all" ? `No exams match${q ? ` "${q}"` : " that filter"}.` : "Start a new exam, or let an AI tool turn your Word file into one."}
         </EmptyState>
-      ) : shown.length === 0 ? (
-        <EmptyState title="Nothing here" Icon={Pencil}>
-          No exams match{q ? ` "${query.trim()}"` : " that filter"}.
-        </EmptyState>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <ExamTable exams={pageRows} sort={sort} onSort={(s) => { setSort(s); setPage(0); }} />
+      )}
+      {!error && data && total > 0 && (
+        <div className={cn("flex flex-col gap-3 transition-opacity", loading && "opacity-60")} aria-busy={loading}>
+          <ExamTable exams={exams} sort={sort} onSort={(s) => { setSort(s); setPage(0); }} />
+          <div className="flex flex-col gap-3 md:hidden">
+            {exams.map((exam) => (
+              <ExamCard key={exam.id} exam={exam} />
+            ))}
+          </div>
           <Pagination
-            className="hidden md:flex"
-            total={matched.length}
-            page={current}
+            total={total}
+            page={page}
             pageSize={pageSize}
             onPage={setPage}
             onPageSize={(n) => {
@@ -192,24 +168,9 @@ function ListContent({ data }: { data: TutorHome }) {
               setPage(0);
             }}
           />
-          <div className="flex flex-col gap-3 md:hidden">
-            {shown.map((exam) => (
-              <ExamCard key={exam.id} exam={exam} />
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-1 md:hidden">
-            <span className="text-sm font-bold text-muted">
-              Showing {shown.length} of {matched.length}
-            </span>
-            {matched.length > shown.length && (
-              <Button variant="secondary" size="md" onClick={() => setLimit((n) => n + PAGE)}>
-                Show {Math.min(PAGE, matched.length - shown.length)} more
-              </Button>
-            )}
-          </div>
         </div>
       )}
-    </>
+    </StaffMain>
   );
 }
 
@@ -253,7 +214,7 @@ function action(exam: TutorExamRow) {
   return { href: `/tutor/exams/${exam.id}/sessions`, label: "Manage", variant: "dark" as const };
 }
 
-function SortHeader({ label, k, sort, onSort, className }: { label: string; k: SortKey; sort: SortState; onSort: (s: SortState) => void; className?: string }) {
+function SortHeader({ label, k, sort, onSort, className }: { label: string; k: ExamSort; sort: SortState; onSort: (s: SortState) => void; className?: string }) {
   const on = sort.key === k;
   const Arrow = !on ? ChevronsUpDown : sort.dir === "asc" ? ChevronUp : ChevronDown;
   return (

@@ -6,8 +6,10 @@ import { useParams } from "next/navigation";
 import { Check, Lock, Search } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { tutorApi } from "@/lib/api-staff";
-import type { ClassCard, ExamSessions as ExamSessionsData, LiveData, LiveRow, LiveState } from "@/lib/staff-types";
+import type { ClassCard, ExamSessions as ExamSessionsData, LiveData, LiveFilter, LiveRow, LiveState } from "@/lib/staff-types";
 import { useAsync } from "@/lib/hooks/useAsync";
+import { useDebounced } from "@/lib/hooks/useDebounced";
+import type { SubmitReason } from "@/lib/types";
 import { cn, formatDate, formatTime, plural } from "@/lib/utils";
 import { BackLink, ConfirmModal, FilterPill, MiniProgress, Pagination, Select, StatusChip, inputClass } from "@/components/staff/bits";
 import { StaffMain } from "@/components/staff/StaffShell";
@@ -189,7 +191,16 @@ function BatchDetail({ card, canEdit, onChange }: { card: ClassCard; canEdit: bo
   const released = card.releasedAt != null;
   const chip = released ? { tone: "mint" as ChipTone, label: "Results released" } : SESSION_CHIP[card.status];
   const canRelease = closed && card.toMark === 0 && !released;
-  const live = useAsync(() => tutorApi.live(card.sessionId), [card.sessionId]);
+  // The server searches, filters and pages the students, so a 100-student class sends one page at a time.
+  const [filter, setFilter] = useState<LiveFilter>("all");
+  const [text, setText] = useState("");
+  const search = useDebounced(text.trim(), 300);
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
+  const live = useAsync(
+    () => tutorApi.live(card.sessionId, { state: filter, q: search, page: page + 1, perPage: pageSize }),
+    [card.sessionId, filter, search, page, pageSize],
+  );
 
   // Keep the list fresh while the teacher watches an exam.
   useEffect(() => {
@@ -280,9 +291,32 @@ function BatchDetail({ card, canEdit, onChange }: { card: ClassCard; canEdit: bo
         )}
       </Card>
 
-      {live.loading && <Skeleton className="h-64 rounded-[28px]" />}
+      {!live.data && !live.error && <Skeleton className="h-64 rounded-[28px]" />}
       {live.error && <ErrorState code={live.error.code} message={live.error.message} onRetry={live.reload} />}
-      {live.data && <LiveList data={live.data} canEdit={canEdit} />}
+      {live.data && (
+        <LiveList
+          data={live.data}
+          canEdit={canEdit}
+          busy={live.loading}
+          filter={filter}
+          onFilter={(f) => {
+            setFilter(f);
+            setPage(0);
+          }}
+          text={text}
+          onText={(t) => {
+            setText(t);
+            setPage(0);
+          }}
+          page={page}
+          pageSize={pageSize}
+          onPage={setPage}
+          onPageSize={(n) => {
+            setPageSize(n);
+            setPage(0);
+          }}
+        />
+      )}
 
       <ConfirmModal open={ask === "open"} onClose={() => setAsk(null)} title={`Open for ${card.label}?`} confirmLabel="Open now" onConfirm={() => run("open")}>
         <p>
@@ -311,47 +345,55 @@ const STATE_CHIP: Record<LiveState, { tone: ChipTone; label: string } | null> = 
   not_attempted: { tone: "neutral", label: "Not attempted" },
 };
 
-type RowFilter = "all" | "to_mark" | "sitting" | "waiting" | "marked";
+const REASON_TEXT: Record<SubmitReason, string> = {
+  manual: "Submitted by student",
+  timeout: "Time ran out",
+  violations: "Auto-submitted after 3 violations",
+  closed: "Submitted when you closed the exam",
+};
 
-/** Order rows by what needs the teacher first: marking, then sitting, then the rest. */
-const STATE_ORDER: Record<LiveState, number> = { to_mark: 0, sitting: 1, not_started: 2, marked: 3, not_attempted: 4 };
-const ROW_PAGE = 25;
-
-function inFilter(row: LiveRow, f: RowFilter) {
-  if (f === "all") return true;
-  if (f === "waiting") return row.state === "not_started" || row.state === "not_attempted";
-  return row.state === f;
+/** The line under a student's name, built here so the time shows in the viewer's own time zone. */
+function detailOf(row: LiveRow): string {
+  if (row.state === "not_started") return "Not started yet";
+  if (row.state === "not_attempted") return "Didn't sit this exam";
+  if (row.state === "sitting") {
+    const left = row.secondsLeft ?? 0;
+    return `Sitting now · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")} left`;
+  }
+  return `${REASON_TEXT[row.submitReason ?? "manual"]}${row.submittedAt ? ` · ${formatTime(row.submittedAt)}` : ""}`;
 }
 
-function LiveList({ data, canEdit }: { data: LiveData; canEdit: boolean }) {
-  const { card } = data;
-  const [filter, setFilter] = useState<RowFilter>("all");
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(ROW_PAGE);
+function scoreOf(row: LiveRow): string {
+  if (row.state === "marked") return `${row.score ?? 0} / ${row.total} · ${row.grade}`;
+  if (row.state === "to_mark") return `${row.objectiveScore ?? 0} / ${row.objectiveTotal} auto`;
+  if (row.state === "not_attempted") return "Not attempted";
+  return "—";
+}
 
-  const counts = {
-    all: data.rows.length,
-    to_mark: data.rows.filter((r) => inFilter(r, "to_mark")).length,
-    sitting: data.rows.filter((r) => inFilter(r, "sitting")).length,
-    waiting: data.rows.filter((r) => inFilter(r, "waiting")).length,
-    marked: data.rows.filter((r) => inFilter(r, "marked")).length,
-  };
-  const pills: { id: RowFilter; label: string }[] = [
+interface LiveListProps {
+  data: LiveData;
+  canEdit: boolean;
+  /** A new page or filter is loading: keep the old rows, dimmed. */
+  busy: boolean;
+  filter: LiveFilter;
+  onFilter: (f: LiveFilter) => void;
+  text: string;
+  onText: (t: string) => void;
+  page: number;
+  pageSize: number;
+  onPage: (p: number) => void;
+  onPageSize: (n: number) => void;
+}
+
+function LiveList({ data, canEdit, busy, filter, onFilter, text, onText, page, pageSize, onPage, onPageSize }: LiveListProps) {
+  const { card, counts } = data;
+  const pills: { id: LiveFilter; label: string }[] = [
     { id: "all", label: "Everyone" },
     ...(counts.to_mark ? [{ id: "to_mark" as const, label: "Needs marking" }] : []),
     ...(counts.sitting ? [{ id: "sitting" as const, label: "Sitting now" }] : []),
     ...(counts.waiting ? [{ id: "waiting" as const, label: card.status === "closed" ? "Not attempted" : "Not started" }] : []),
     ...(counts.marked ? [{ id: "marked" as const, label: "Marked" }] : []),
   ];
-
-  const q = query.trim().toLowerCase();
-  const matched = data.rows
-    .filter((r) => inFilter(r, filter) && (!q || r.name.toLowerCase().includes(q)))
-    .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.name.localeCompare(b.name));
-  const pages = Math.max(1, Math.ceil(matched.length / pageSize));
-  const current = Math.min(page, pages - 1);
-  const shown = matched.slice(current * pageSize, (current + 1) * pageSize);
 
   return (
     <Card className="flex min-w-0 flex-col gap-3 p-[22px]">
@@ -363,62 +405,39 @@ function LiveList({ data, canEdit }: { data: LiveData; canEdit: boolean }) {
         {card.status === "open" && <span className="text-[13px] font-bold text-muted">Refreshes every 10 seconds</span>}
       </div>
 
-      {(
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="sr-only" htmlFor="student-search">Search students</label>
-          <div className="relative min-w-0 flex-1 basis-48 md:max-w-[260px]">
-            <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={3} />
-            <input
-              id="student-search"
-              type="search"
-              value={query}
-              placeholder="Search students"
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setPage(0);
-              }}
-              className={cn(inputClass, "h-10 rounded-full pl-10 pr-4 text-sm")}
-            />
-          </div>
-          {pills.map((p) => (
-              <FilterPill
-                key={p.id}
-                active={filter === p.id}
-                onClick={() => {
-                  setFilter(p.id);
-                  setPage(0);
-                }}
-              >
-                {p.label} · {counts[p.id]}
-              </FilterPill>
-            ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="sr-only" htmlFor="student-search">Search students</label>
+        <div className="relative min-w-0 flex-1 basis-48 md:max-w-[260px]">
+          <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={3} />
+          <input
+            id="student-search"
+            type="search"
+            value={text}
+            placeholder="Search students"
+            onChange={(e) => onText(e.target.value)}
+            className={cn(inputClass, "h-10 rounded-full pl-10 pr-4 text-sm")}
+          />
         </div>
-      )}
+        {pills.map((p) => (
+          <FilterPill key={p.id} active={filter === p.id} onClick={() => onFilter(p.id)}>
+            {p.label} · {counts[p.id]}
+          </FilterPill>
+        ))}
+      </div>
 
-      {data.rows.length === 0 ? (
+      {counts.all === 0 ? (
         <p className="rounded-2xl bg-paper px-4 py-6 text-center text-sm font-bold text-muted">There are no students in this class yet.</p>
-      ) : matched.length === 0 ? (
+      ) : data.meta.total === 0 ? (
         <p className="rounded-2xl bg-paper px-4 py-6 text-center text-sm font-bold text-muted">No students match.</p>
       ) : (
-        <ul className="flex flex-col gap-2.5">
-          {shown.map((row) => (
+        <ul className={cn("flex flex-col gap-2.5 transition-opacity", busy && "opacity-60")} aria-busy={busy}>
+          {data.rows.map((row) => (
             <Row key={row.studentId} row={row} canEdit={canEdit} />
           ))}
         </ul>
       )}
-      {data.rows.length > 0 && (
-        <Pagination
-          className="pt-1"
-          total={matched.length}
-          page={current}
-          pageSize={pageSize}
-          sizes={[10, 25, 50, 100]}
-          onPage={setPage}
-          onPageSize={(n) => {
-            setPageSize(n);
-            setPage(0);
-          }}
-        />
+      {counts.all > 0 && (
+        <Pagination className="pt-1" total={data.meta.total} page={page} pageSize={pageSize} sizes={[10, 25, 50, 100]} onPage={onPage} onPageSize={onPageSize} />
       )}
     </Card>
   );
@@ -442,7 +461,7 @@ function RowBase({ row, canEdit }: { row: LiveRow; canEdit: boolean }) {
       </span>
       <div className="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
         <span className="text-base font-black">{row.name}</span>
-        <span className="text-[13px] font-bold text-muted">{row.detail}</span>
+        <span className="text-[13px] font-bold text-muted">{detailOf(row)}</span>
       </div>
       {started && (
         <div className="w-[150px]">
@@ -457,7 +476,7 @@ function RowBase({ row, canEdit }: { row: LiveRow; canEdit: boolean }) {
       <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
       <span className="flex min-w-[90px] items-center justify-end gap-2 text-right text-[15px] font-black">
         {row.grade && <GradeTile grade={row.grade} size="sm" className="size-8 rounded-[10px] text-base" />}
-        {row.scoreText}
+        {scoreOf(row)}
       </span>
       {action && (
         <Link

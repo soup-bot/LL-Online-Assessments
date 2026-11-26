@@ -56,9 +56,9 @@ export function StaffShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="bg-dotgrid flex min-h-dvh flex-col">
-      {!USE_MOCK && (
+      {USE_MOCK && (
         <p className="bg-amber px-4 py-1.5 text-center text-xs font-extrabold text-amber-ink">
-          Teacher and admin screens still show demo data. They connect to the API next.
+          Teacher and admin screens need the API. Turn off NEXT_PUBLIC_USE_MOCK and start the Laravel server.
         </p>
       )}
       <header className="border-b border-line-header bg-white">

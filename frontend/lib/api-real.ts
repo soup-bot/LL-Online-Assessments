@@ -16,23 +16,12 @@ import type {
   ViolationOutcome,
 } from "@/lib/api-types";
 import { clearAuth, getStoredUser, request, storeAuth } from "@/lib/http";
-import { readDb, setSessionUserId } from "@/lib/mock/db";
 import type { User } from "@/lib/types";
-
-/**
- * The teacher and admin screens are not connected to the API yet and still read the demo data
- * in the browser. Signing in as staff also signs into the matching demo account so they keep working.
- */
-function bridgeToDemoData(user: User): void {
-  const demo = user.role === "student" ? undefined : readDb().users.find((u) => u.email === user.email);
-  setSessionUserId(demo?.id ?? null);
-}
 
 export const realAuth = {
   async login(email: string, password: string): Promise<User> {
     const { token, user } = await request<{ token: string; user: User }>("POST", "/auth/login", { email, password });
     storeAuth(token, user);
-    bridgeToDemoData(user);
     return user;
   },
 
@@ -40,7 +29,6 @@ export const realAuth = {
     // Tell the server to revoke the token, but never make the person wait for it.
     void request("POST", "/auth/logout").catch(() => undefined);
     clearAuth();
-    setSessionUserId(null);
   },
 };
 

@@ -1,7 +1,21 @@
 import type { Grade } from "@/lib/grading";
 import type { AttemptStatus, ExamStatus, Navigation, QuestionKind, SessionStatus, SubmitReason } from "@/lib/types";
 
-/** Shapes the teacher and admin screens consume. The Laravel resources will return the same JSON. */
+/** Shapes the teacher and admin screens consume: the JSON of the Laravel API (see /docs/api). */
+
+/** Where a page of a list sits in the whole. */
+export interface Meta {
+  page: number;
+  perPage: number;
+  total: number;
+}
+
+/** Paging and searching shared by every list. The server does the filtering, so only one page is ever sent. */
+export interface ListQuery {
+  page?: number;
+  perPage?: number;
+  q?: string;
+}
 
 export interface StaffProfile {
   id: number;
@@ -50,8 +64,19 @@ export interface TutorExamRow {
 
 export interface TutorHome {
   tutor: StaffProfile;
+  /** Always counts every exam, whatever the filter. */
   stats: { open: number; toMark: number; drafts: number };
   exams: TutorExamRow[];
+  meta: Meta;
+}
+
+export type ExamFilter = "all" | "drafts" | "published" | "marking";
+export type ExamSort = "attention" | "recent" | "name" | "progress";
+
+export interface ExamListQuery extends ListQuery {
+  filter?: ExamFilter;
+  sort?: ExamSort;
+  dir?: "asc" | "desc";
 }
 
 export interface BuilderQuestion {
@@ -148,21 +173,37 @@ export interface LiveRow {
   initials: string;
   attemptId: number | null;
   state: LiveState;
-  detail: string;
+  /** When they handed in (ISO), and why. */
+  submittedAt: string | null;
+  submitReason: SubmitReason | null;
   answered: number;
   questionCount: number;
   violations: number;
   /** Seconds left while sitting. */
   secondsLeft: number | null;
-  scoreText: string;
+  /** Final score once marked. */
+  score: number | null;
+  total: number;
+  /** Marks from the auto-marked questions, shown while the written answers wait. */
+  objectiveScore: number | null;
+  objectiveTotal: number;
   grade: Grade | null;
+}
+
+export type LiveFilter = "all" | "to_mark" | "sitting" | "waiting" | "marked";
+
+export interface LiveQuery extends ListQuery {
+  state?: LiveFilter;
 }
 
 export interface LiveData {
   card: ClassCard;
   rows: LiveRow[];
+  /** How many students each filter holds, so the pills can show their size. */
+  counts: Record<LiveFilter, number>;
   questionCount: number;
   release: { closed: boolean; toMark: number; canRelease: boolean; released: boolean };
+  meta: Meta;
 }
 
 export interface ToMarkItem {
@@ -172,6 +213,11 @@ export interface ToMarkItem {
   className: string;
   submittedAt: string;
   writtenCount: number;
+}
+
+export interface ToMarkPage {
+  items: ToMarkItem[];
+  meta: Meta;
 }
 
 export interface TeacherClass {
@@ -258,18 +304,30 @@ export type UserRole = "tutor" | "student" | "admin";
 export interface UserRow extends PersonLite {
   email: string;
   role: UserRole;
+  isActive: boolean;
+  /** "Teaches Batch A, Batch B", "Batch A", "Economics Batch A, Business Studies Batch C"... */
   classes: string;
+}
+
+export interface UsersQuery extends ListQuery {
+  role?: UserRole;
 }
 
 export interface UsersData {
   users: UserRow[];
+  /** Always counts everyone, whatever the filter. */
   counts: { tutors: number; students: number; admins: number };
+  meta: Meta;
 }
 
 export interface UserInput {
   name: string;
   email: string;
   role: UserRole;
+  /** Optional on a new account (it gets the default password). At least 8 characters. */
+  password?: string;
+  /** false deactivates the account and signs it out everywhere. */
+  isActive?: boolean;
 }
 
 export interface AdminClass {
@@ -284,8 +342,17 @@ export interface AdminClass {
 export interface AdminClassesData {
   classes: AdminClass[];
   tutors: PersonLite[];
-  /** Every student, with each class they sit in now (one per subject). */
-  students: (PersonLite & { classes: { id: number; name: string; subjectCode: string }[] })[];
+  meta: Meta;
+}
+
+export interface StudentChoice extends PersonLite {
+  /** Each class they sit in now (one per subject). */
+  classes: { id: number; name: string; subjectCode: string }[];
+}
+
+export interface StudentSearchData {
+  students: StudentChoice[];
+  meta: Meta;
 }
 
 export interface ClassInput {
@@ -310,11 +377,19 @@ export interface AdminExamRow {
   handedIn: number;
   students: number;
   marked: number;
-  averageText: string;
+  /** Only once results are released. */
+  averagePercent: number | null;
+}
+
+export interface AdminExamsQuery extends ListQuery {
+  teacher?: number;
+  class?: number;
+  status?: AdminExamStatus;
 }
 
 export interface AdminExamsData {
   rows: AdminExamRow[];
   teachers: PersonLite[];
-  classes: { id: number; label: string }[];
+  classes: { id: number; name: string; label: string }[];
+  meta: Meta;
 }
