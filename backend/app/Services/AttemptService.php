@@ -76,6 +76,31 @@ class AttemptService
     }
 
     /**
+     * Hand in every attempt that has run out of time. The scheduled `attempts:expire` command and the
+     * teacher screens call this, so a student who never comes back still ends up handed in.
+     *
+     * @param  iterable<int>|null  $sessionIds  limit to these sessions, or every session when null
+     * @return int how many attempts were handed in
+     */
+    public function expireOverdue(?iterable $sessionIds = null): int
+    {
+        $limit = now()->subMilliseconds((int) config('exam.save_grace_ms'));
+        $query = Attempt::where('status', AttemptStatus::InProgress->value)->where('deadline_at', '<', $limit);
+        if ($sessionIds !== null) {
+            $query->whereIn('exam_session_id', collect($sessionIds)->all());
+        }
+
+        $count = 0;
+        $query->get()->each(function (Attempt $attempt) use (&$count) {
+            if ($this->expireIfDue($attempt)) {
+                $count++;
+            }
+        });
+
+        return $count;
+    }
+
+    /**
      * Idempotent autosave of one answer and/or its flag. A save carrying an older `clientSavedAt`
      * than the stored one is ignored, so a retried request that arrives late cannot overwrite newer typing.
      *

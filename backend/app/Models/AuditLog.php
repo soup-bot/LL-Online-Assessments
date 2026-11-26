@@ -17,6 +17,18 @@ class AuditLog extends Model
         return ['meta' => 'array'];
     }
 
+    /** Write one line of the trail: who did what to which record. */
+    public static function record(?User $actor, string $action, ?Model $subject = null, array $meta = []): void
+    {
+        self::create([
+            'actor_id' => $actor?->id,
+            'action' => $action,
+            'subject_type' => $subject ? $subject::class : null,
+            'subject_id' => $subject?->getKey(),
+            'meta' => $meta ?: null,
+        ]);
+    }
+
     public function actor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'actor_id');

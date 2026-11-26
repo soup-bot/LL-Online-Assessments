@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Student;
+use App\Http\Controllers\Tutor;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -42,5 +43,38 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/results/{attempt}/viewed', [Student\ResultController::class, 'viewed'])->whereNumber('attempt');
     });
 
-    // Next: role:tutor,admin for /tutor, role:admin for /admin.
+    // Teachers build, run and mark exams. Admins may read the exam, class and submission pages but not change them.
+    Route::middleware('role:tutor,admin')->prefix('tutor')->group(function () {
+        Route::get('/exams/{exam}', [Tutor\ExamController::class, 'show'])->whereNumber('exam');
+        Route::get('/exams/{exam}/questions/new', [Tutor\QuestionController::class, 'template'])->whereNumber('exam');
+        Route::get('/exams/{exam}/questions/{question}', [Tutor\QuestionController::class, 'show'])->whereNumber(['exam', 'question']);
+        Route::get('/exams/{exam}/sessions', [Tutor\SessionController::class, 'index'])->whereNumber('exam');
+        Route::get('/sessions/{session}/live', [Tutor\SessionController::class, 'live'])->whereNumber('session');
+        Route::get('/attempts/{attempt}', [Tutor\MarkingController::class, 'show'])->whereNumber('attempt');
+
+        Route::middleware('role:tutor')->group(function () {
+            Route::get('/exams', [Tutor\ExamController::class, 'index']);
+            Route::post('/exams', [Tutor\ExamController::class, 'store']);
+            Route::patch('/exams/{exam}', [Tutor\ExamController::class, 'update'])->whereNumber('exam');
+            Route::post('/exams/{exam}/publish', [Tutor\ExamController::class, 'publish'])->whereNumber('exam');
+
+            Route::post('/exams/{exam}/questions', [Tutor\QuestionController::class, 'store'])->whereNumber('exam');
+            Route::post('/exams/{exam}/questions/import', [Tutor\QuestionController::class, 'import'])->whereNumber('exam');
+            Route::put('/exams/{exam}/questions/{question}', [Tutor\QuestionController::class, 'update'])->whereNumber(['exam', 'question']);
+            Route::delete('/exams/{exam}/questions/{question}', [Tutor\QuestionController::class, 'destroy'])->whereNumber(['exam', 'question']);
+            Route::patch('/exams/{exam}/questions/{question}/approval', [Tutor\QuestionController::class, 'approval'])->whereNumber(['exam', 'question']);
+
+            Route::post('/sessions/{session}/open', [Tutor\SessionController::class, 'open'])->whereNumber('session');
+            Route::post('/sessions/{session}/close', [Tutor\SessionController::class, 'close'])->whereNumber('session');
+            Route::post('/sessions/{session}/release', [Tutor\SessionController::class, 'release'])->whereNumber('session');
+
+            Route::get('/to-mark', [Tutor\MarkingController::class, 'index']);
+            Route::get('/to-mark/count', [Tutor\MarkingController::class, 'count']);
+            Route::put('/attempts/{attempt}/marks', [Tutor\MarkingController::class, 'save'])->whereNumber('attempt');
+
+            Route::get('/classes', [Tutor\ClassController::class, 'index']);
+        });
+    });
+
+    // Next: role:admin for /admin.
 });
