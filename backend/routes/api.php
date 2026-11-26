@@ -8,6 +8,13 @@ use Illuminate\Support\Facades\Route;
  * The full endpoint list is in the backend design page; groups are added as each part is built.
  */
 
+/**
+ * Health check
+ *
+ * Answers `{ status: "ok", time }` when the API is up. No sign-in needed.
+ *
+ * @unauthenticated
+ */
 Route::get('/health', fn () => response()->json(['status' => 'ok', 'time' => now()->toIso8601String()]));
 
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');

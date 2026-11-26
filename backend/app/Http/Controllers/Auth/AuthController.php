@@ -19,6 +19,16 @@ class AuthController extends Controller
 
     private const BAD_CREDENTIALS = "That email and password don't match. Please try again.";
 
+    /**
+     * Sign in
+     *
+     * Trade an email and password for a Bearer token. The token expires after 12 hours.
+     * A wrong password, an unknown email and a deactivated account all return the same
+     * 422 `validation` error, so nobody can tell which accounts exist. Limited to 5 attempts
+     * a minute per email and address (then 429 `throttled`).
+     *
+     * @unauthenticated
+     */
     public function login(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -42,6 +52,11 @@ class AuthController extends Controller
         ]);
     }
 
+    /**
+     * Sign out
+     *
+     * Revokes the token used for this request.
+     */
     public function logout(Request $request): JsonResponse
     {
         $request->user()->currentAccessToken()->delete();
@@ -49,6 +64,11 @@ class AuthController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Current user
+     *
+     * The signed-in user: `{ id, name, email, role, honorific? }`. Role is `student`, `tutor` or `admin`.
+     */
     public function me(Request $request): JsonResponse
     {
         // A plain object, not wrapped in { data }, to match the frontend's User type.
