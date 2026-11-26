@@ -104,18 +104,24 @@ function currentStudent(db: DbState): User {
   return user;
 }
 
-function classOf(db: DbState, studentId: number): SchoolClass | undefined {
-  return db.classes.find((c) => c.studentIds.includes(studentId));
+/** Every class a student sits in. A student can take several subjects, one class per subject. */
+function classesOf(db: DbState, studentId: number): SchoolClass[] {
+  return db.classes.filter((c) => c.studentIds.includes(studentId));
 }
 
 export function profileOf(db: DbState, user: User): StudentProfile {
-  const cls = classOf(db, user.id);
+  const classes = classesOf(db, user.id);
+  // One class: its full name. Several: "Economics (Batch A) · Business Studies (Batch C)".
+  const className =
+    classes.length <= 1
+      ? (classes[0]?.name ?? "")
+      : classes.map((c) => `${subjectShort(c)} (${c.name.split(",")[1]?.trim() ?? c.name})`).join(" · ");
   return {
     id: user.id,
     name: user.name,
     firstName: firstName(user.name),
     initials: initials(user.name),
-    className: cls?.name ?? "",
+    className,
   };
 }
 

@@ -49,7 +49,7 @@ import type {
   UsersData,
 } from "@/lib/staff-types";
 import type { Attempt, DbState, Exam, ExamSession, Question, QuestionKind, SchoolClass, User } from "@/lib/types";
-import { firstName, formatTime, initials, plural } from "@/lib/utils";
+import { firstName, formatTime, initials, plural, subjectShort } from "@/lib/utils";
 
 /* ----------------------------------------------------------------- helpers */
 
@@ -791,8 +791,9 @@ function classesText(db: DbState, user: User): string {
     const mine = db.classes.filter((c) => c.tutorId === user.id).map(batchOf);
     return mine.length ? `Teaches ${mine.join(", ")}` : "No classes yet";
   }
-  const cls = db.classes.find((c) => c.studentIds.includes(user.id));
-  return cls ? batchOf(cls) : "Not in a class";
+  const mine = db.classes.filter((c) => c.studentIds.includes(user.id));
+  if (mine.length === 0) return "Not in a class";
+  return mine.length === 1 ? batchOf(mine[0]) : mine.map((c) => `${subjectShort(c)} ${batchOf(c)}`).join(", ");
 }
 
 function emailTaken(db: DbState, email: string, exceptId?: number) {
@@ -868,7 +869,10 @@ export const adminApi = {
           tutors: db.users.filter((u) => u.role === "tutor").map(person),
           students: db.users
             .filter((u) => u.role === "student")
-            .map((u) => ({ ...person(u), className: db.classes.find((c) => c.studentIds.includes(u.id))?.name ?? null })),
+            .map((u) => ({
+              ...person(u),
+              classes: db.classes.filter((c) => c.studentIds.includes(u.id)).map((c) => ({ id: c.id, name: c.name, subjectCode: c.subjectCode })),
+            })),
         };
       }),
     );
@@ -886,9 +890,14 @@ export const adminApi = {
         if (!tutor) throw new ApiError("validation", "Choose a teacher for this class.");
         const students = [...new Set(input.studentIds)].filter((sid) => db.users.some((u) => u.id === sid && u.role === "student"));
 
-        // A student sits in one class at a time: adding them here takes them out of any other.
-        for (const other of db.classes) {
-          if (other.id !== id) other.studentIds = other.studentIds.filter((sid) => !students.includes(sid));
+        // A student can take several subjects but only one class in each subject.
+        const code = input.subjectCode.trim();
+        for (const sid of students) {
+          const clash = db.classes.find((c) => c.id !== id && c.subjectCode === code && c.studentIds.includes(sid));
+          if (clash) {
+            const who = db.users.find((u) => u.id === sid)!.name;
+            throw new ApiError("conflict", `${who} is already in ${clash.name}. A student can only be in one class for each subject.`);
+          }
         }
 
         let target = id == null ? undefined : db.classes.find((c) => c.id === id);

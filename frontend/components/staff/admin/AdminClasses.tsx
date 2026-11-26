@@ -85,6 +85,9 @@ function ClassForm({ data, cls, onSaved }: { data: AdminClassesData; cls: AdminC
 
   const members = form.studentIds.map((id) => data.students.find((s) => s.id === id)).filter((s) => !!s);
   const addable = data.students.filter((s) => !form.studentIds.includes(s.id));
+  const code = form.subjectCode.trim();
+  /** The class a student already has for this subject, if any (that blocks adding them here). */
+  const sameSubject = (s: (typeof addable)[number]) => s.classes.find((c) => c.id !== cls?.id && c.subjectCode === code);
 
   async function save() {
     setSaving(true);
@@ -144,11 +147,16 @@ function ClassForm({ data, cls, onSaved }: { data: AdminClassesData; cls: AdminC
           <label className="sr-only" htmlFor="add-student">Add a student</label>
           <Select id="add-student" className="max-w-[320px] flex-1 rounded-full border-dashed" value={toAdd} onChange={(e) => setToAdd(e.target.value)}>
             <option value="">Add a student…</option>
-            {addable.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}{s.className ? ` (now in ${s.className.split(",")[1]?.trim() ?? s.className})` : ""}
-              </option>
-            ))}
+            {addable.map((s) => {
+              const clash = code ? sameSubject(s) : undefined;
+              const batch = (name: string) => name.split(",")[1]?.trim() ?? name;
+              return (
+                <option key={s.id} value={s.id} disabled={!!clash}>
+                  {s.name}
+                  {clash ? ` (already in ${batch(clash.name)})` : s.classes.length ? ` (also in ${s.classes.map((c) => batch(c.name)).join(", ")})` : ""}
+                </option>
+              );
+            })}
           </Select>
           <Button
             variant="soft"
@@ -162,7 +170,7 @@ function ClassForm({ data, cls, onSaved }: { data: AdminClassesData; cls: AdminC
             Add
           </Button>
         </div>
-        <p className="text-xs font-bold text-muted">A student sits in one class at a time, so adding someone moves them here.</p>
+        <p className="text-xs font-bold text-muted">A student can take several subjects, but only one class in each subject.</p>
       </div>
 
       {problem && <Notice variant="error">{problem}</Notice>}

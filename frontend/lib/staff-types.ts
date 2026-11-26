@@ -284,8 +284,8 @@ export interface AdminClass {
 export interface AdminClassesData {
   classes: AdminClass[];
   tutors: PersonLite[];
-  /** Every student, with the class they sit in now (if any). */
-  students: (PersonLite & { className: string | null })[];
+  /** Every student, with each class they sit in now (one per subject). */
+  students: (PersonLite & { classes: { id: number; name: string; subjectCode: string }[] })[];
 }
 
 export interface ClassInput {
