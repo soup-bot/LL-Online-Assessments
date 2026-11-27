@@ -60,19 +60,20 @@ function Panel() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-label="Demo tools"
-        className="fixed left-0 top-1/2 z-[60] grid h-11 w-4 -translate-y-1/2 place-items-center rounded-r-lg bg-ink/60 text-white shadow backdrop-blur hover:bg-ink"
+        aria-label="Dev tools"
+        className="fixed left-0 top-1/2 z-[60] flex -translate-y-1/2 flex-col items-center gap-2.5 rounded-r-2xl bg-secondary px-2.5 py-3.5 text-white shadow-lg ring-1 ring-black/10 transition hover:bg-secondary-dark active:scale-95"
       >
-        {open ? <X className="size-3" aria-hidden /> : <Wrench className="size-3" aria-hidden />}
+        {open ? <X className="size-[18px]" strokeWidth={2.6} aria-hidden /> : <Wrench className="size-[18px]" strokeWidth={2.4} aria-hidden />}
+        <span className="rotate-180 text-xs font-black tracking-wider [writing-mode:vertical-rl]">Dev tools</span>
       </button>
 
       {open && (
         <div
           role="region"
-          aria-label="Demo tools"
-          className="fixed left-6 top-1/2 z-[60] flex max-h-[80dvh] w-72 -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-2xl border border-line bg-white p-4 text-sm shadow-2xl"
+          aria-label="Dev tools"
+          className="fixed left-14 top-1/2 z-[60] flex max-h-[80dvh] w-72 -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-2xl border border-line bg-white p-4 text-sm shadow-2xl"
         >
-          <p className="text-xs font-black uppercase tracking-wide text-muted">Demo tools</p>
+          <p className="text-xs font-black uppercase tracking-wide text-muted">Dev tools</p>
 
           <label className="flex flex-col gap-1 font-extrabold">
             Sign in as
