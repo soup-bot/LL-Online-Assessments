@@ -18,6 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias(['role' => EnsureRole::class]);
+
+        // The web app signs in with a cookie (Sanctum's SPA mode): requests from FRONTEND_URL get a session and CSRF check.
+        // Anything else (tests, scripts, other clients) still uses a Bearer token.
+        $middleware->statefulApi();
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // A refused request (wrong password, already handed in...) is the client's mistake, not a crash: keep it out of the error log.

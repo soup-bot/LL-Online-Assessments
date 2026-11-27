@@ -66,6 +66,10 @@ class AdminUserService
             // A deactivated account is signed out everywhere.
             if (! $user->is_active) {
                 $user->tokens()->delete();
+                // ...including any browser session they have open.
+                if (config('session.driver') === 'database') {
+                    DB::table(config('session.table', 'sessions'))->where('user_id', $user->id)->delete();
+                }
             }
             AuditLog::record($admin, 'user.update', $user, ['role' => $role->value, 'active' => $user->is_active]);
 

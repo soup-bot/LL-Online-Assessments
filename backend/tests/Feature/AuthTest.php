@@ -89,6 +89,71 @@ class AuthTest extends TestCase
         $this->withToken($token)->getJson('/api/v1/auth/me')->assertUnauthorized();
     }
 
+    /** A request that looks like it came from the web app: the Origin Sanctum treats as stateful. */
+    private function fromWebApp(): static
+    {
+        $this->app['auth']->forgetGuards();
+
+        return $this->withHeaders(['Origin' => 'http://localhost:3000', 'Referer' => 'http://localhost:3000/']);
+    }
+
+    /** The session cookie a response set, to send back on the next request like a browser would. */
+    private function sessionCookieOf(\Illuminate\Testing\TestResponse $response): string
+    {
+        $cookie = collect($response->headers->getCookies())->first(fn ($c) => $c->getName() === config('session.cookie'));
+        $this->assertNotNull($cookie, 'the reply should set a session cookie');
+        $this->assertTrue($cookie->isHttpOnly(), 'scripts must not be able to read the session cookie');
+
+        return $cookie->getValue();
+    }
+
+    public function test_the_web_app_signs_in_with_an_httponly_cookie_and_gets_no_token(): void
+    {
+        User::factory()->tutor()->create(['email' => 'aishath@ll.test']);
+
+        $response = $this->fromWebApp()->postJson('/api/v1/auth/login', ['email' => 'aishath@ll.test', 'password' => 'password']);
+
+        $response->assertOk()->assertJsonPath('user.role', 'tutor')->assertJsonMissingPath('token');
+        $this->assertDatabaseCount('personal_access_tokens', 0);
+        $this->sessionCookieOf($response);
+    }
+
+    public function test_the_session_cookie_signs_later_requests_in_and_logout_ends_it(): void
+    {
+        $user = User::factory()->create(['email' => 'sam@ll.test']);
+        $cookie = $this->sessionCookieOf($this->fromWebApp()->postJson('/api/v1/auth/login', ['email' => 'sam@ll.test', 'password' => 'password']));
+        $name = config('session.cookie');
+
+        $this->fromWebApp()->withUnencryptedCookie($name, $cookie)->getJson('/api/v1/auth/me')->assertOk()->assertJsonPath('id', $user->id);
+        $this->fromWebApp()->withUnencryptedCookie($name, $cookie)->postJson('/api/v1/auth/logout')->assertOk();
+
+        $this->fromWebApp()->withUnencryptedCookie($name, $cookie)->getJson('/api/v1/auth/me')->assertUnauthorized();
+    }
+
+    public function test_a_wrong_password_from_the_web_app_gets_no_session(): void
+    {
+        User::factory()->create(['email' => 'sam@ll.test']);
+
+        $this->fromWebApp()->postJson('/api/v1/auth/login', ['email' => 'sam@ll.test', 'password' => 'nope'])->assertStatus(422);
+        $this->fromWebApp()->getJson('/api/v1/auth/me')->assertUnauthorized();
+    }
+
+    public function test_deactivating_a_user_ends_their_browser_session_too(): void
+    {
+        config(['session.driver' => 'database']);
+        $admin = User::factory()->admin()->create();
+        $student = User::factory()->create(['email' => 'sam@ll.test']);
+        \Illuminate\Support\Facades\DB::table('sessions')->insert([
+            'id' => 'abc', 'user_id' => $student->id, 'payload' => '', 'last_activity' => now()->timestamp,
+        ]);
+
+        $this->as($admin->createToken('t')->plainTextToken)
+            ->patchJson("/api/v1/admin/users/{$student->id}", ['name' => $student->name, 'email' => $student->email, 'role' => 'student', 'isActive' => false])
+            ->assertOk();
+
+        $this->assertDatabaseMissing('sessions', ['user_id' => $student->id]);
+    }
+
     public function test_me_returns_the_signed_in_user(): void
     {
         $user = User::factory()->admin()->create();
