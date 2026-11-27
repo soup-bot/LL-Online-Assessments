@@ -94,7 +94,7 @@ class ExamController extends Controller
      *
      * @response array{
      *   sessionId: int, title: string, subjectCode: string, subjectName: string, className: string, teacher: string,
-     *   timeLimitMinutes: int, questionCount: int, totalMarks: int, freeNavigation: bool,
+     *   timeLimitMinutes: int, questionCount: int, totalMarks: int, randomOrder: bool,
      *   globalRules: list<array{id: string, text: string}>, examRules: string,
      *   student: array{id: int, name: string, firstName: string, initials: string, className: string, classes: list<array{id: int, name: string, subjectCode: string, subjectName: string, subjectShort: string, batch: string}>},
      *   resumeAttemptId: int|null

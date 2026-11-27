@@ -102,6 +102,11 @@ export const tutorApi = {
     await request("DELETE", `/tutor/exams/${examId}/questions/${questionId}`);
   },
 
+  /** Put the questions in a new order. `ids` holds every question of the exam once. Drafts only. */
+  async reorderQuestions(examId: number, ids: number[]): Promise<void> {
+    await request("PUT", `/tutor/exams/${examId}/questions/order`, { ids });
+  },
+
   async setApproved(examId: number, questionId: number, approved: boolean): Promise<void> {
     await request("PATCH", `/tutor/exams/${examId}/questions/${questionId}/approval`, { approved });
   },

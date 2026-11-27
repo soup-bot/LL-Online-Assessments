@@ -1,5 +1,5 @@
 import type { Grade } from "@/lib/grading";
-import type { AttemptStatus, ExamStatus, Navigation, QuestionKind, SessionStatus, SubmitReason } from "@/lib/types";
+import type { AttemptStatus, ExamStatus, QuestionKind, QuestionOrder, SessionStatus, SubmitReason } from "@/lib/types";
 
 /** Shapes the teacher and admin screens consume: the JSON of the Laravel API (see /docs/api). */
 
@@ -95,7 +95,7 @@ export interface ExamBuilder {
   title: string;
   status: ExamStatus;
   timeLimitMinutes: number;
-  navigation: Navigation;
+  questionOrder: QuestionOrder;
   rules: string;
   questions: BuilderQuestion[];
   totalMarks: number;
@@ -110,7 +110,7 @@ export interface ExamBuilder {
 export interface ExamSettingsPatch {
   title?: string;
   timeLimitMinutes?: number;
-  navigation?: Navigation;
+  questionOrder?: QuestionOrder;
   rules?: string;
   classIds?: number[];
 }

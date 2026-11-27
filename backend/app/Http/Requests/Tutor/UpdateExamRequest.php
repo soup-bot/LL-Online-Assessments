@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Tutor;
 
-use App\Enums\Navigation;
+use App\Enums\QuestionOrder;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -19,8 +19,8 @@ class UpdateExamRequest extends FormRequest
             'title' => ['sometimes', 'string', 'max:120'],
             // Minutes each student gets from the moment they start.
             'timeLimitMinutes' => ['sometimes', 'integer', 'between:1,600'],
-            // any: students move freely. in_order: one way only.
-            'navigation' => ['sometimes', Rule::enum(Navigation::class)],
+            // in_order: everyone sees the teacher's order. random: each student gets their own order.
+            'questionOrder' => ['sometimes', Rule::enum(QuestionOrder::class)],
             // Shown on the cover page under the standard rules.
             'rules' => ['sometimes', 'nullable', 'string', 'max:5000'],
             // The teacher's classes that will sit this exam. Only drafts can change them.

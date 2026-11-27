@@ -163,7 +163,7 @@ class StudentApiTest extends TestCase
         $this->as('ibrahim@ll.test')->getJson("/api/v1/student/exams/{$this->unit3Session()->id}/cover")
             ->assertOk()
             ->assertJsonPath('timeLimitMinutes', 30)
-            ->assertJsonPath('freeNavigation', true)
+            ->assertJsonPath('randomOrder', false)
             ->assertJsonPath('examRules', 'Calculators are not allowed. Answer in full sentences for questions 7 and 8.')
             ->assertJsonCount(3, 'globalRules')
             ->assertJsonPath('resumeAttemptId', null);
@@ -217,6 +217,77 @@ class StudentApiTest extends TestCase
     }
 
     /* --------------------------------------------------------------- attempt */
+
+    /** Unit 3 set to random order, and every student started. Returns each student's question ids in the order they were shown. */
+    private function startEveryoneOnRandomUnit3(): array
+    {
+        $session = $this->unit3Session();
+        $session->exam->update(['question_order' => 'random']);
+
+        $orders = [];
+        foreach (['ibrahim@ll.test', 'hawwa@ll.test'] as $email) {
+            $attemptId = $this->as($email)->postJson("/api/v1/student/exams/{$session->id}/start")->assertOk()->json('attemptId');
+            $orders[$email] = [$attemptId, $this->getJson("/api/v1/student/attempts/{$attemptId}")->assertOk()->json('questions')];
+        }
+
+        return $orders;
+    }
+
+    public function test_with_in_order_everyone_sees_the_teachers_order(): void
+    {
+        $attempt = $this->startAsIbrahim();
+
+        $questions = $this->getJson("/api/v1/student/attempts/{$attempt->id}")->json('questions');
+
+        $this->assertSame(range(1, 8), array_column($questions, 'position'));
+        $this->assertSame(
+            Question::where('exam_id', $attempt->session->exam_id)->orderBy('position')->pluck('id')->all(),
+            array_column($questions, 'id'),
+        );
+    }
+
+    public function test_with_random_each_student_gets_their_own_order_and_numbers_run_one_to_eight(): void
+    {
+        $orders = $this->startEveryoneOnRandomUnit3();
+        $teachers = Question::where('exam_id', $this->unit3Session()->exam_id)->orderBy('position')->pluck('id')->all();
+
+        $ids = array_map(fn ($o) => array_column($o[1], 'id'), $orders);
+        foreach ($orders as [$attemptId, $questions]) {
+            $this->assertEqualsCanonicalizing($teachers, array_column($questions, 'id'), 'the same eight questions');
+            $this->assertSame(range(1, 8), array_column($questions, 'position'), 'numbered 1 to 8 in the order shown');
+        }
+        $this->assertNotSame($teachers, $ids['ibrahim@ll.test'], 'not simply the teachers order');
+        $this->assertNotSame($ids['ibrahim@ll.test'], $ids['hawwa@ll.test'], 'two students, two different orders');
+    }
+
+    public function test_a_students_random_order_is_the_same_every_time_they_reload(): void
+    {
+        $orders = $this->startEveryoneOnRandomUnit3();
+        [$attemptId, $first] = $orders['hawwa@ll.test'];
+
+        $this->as('hawwa@ll.test');
+        $again = $this->getJson("/api/v1/student/attempts/{$attemptId}")->json('questions');
+
+        $this->assertSame(array_column($first, 'id'), array_column($again, 'id'));
+    }
+
+    public function test_the_cover_says_when_the_order_is_random(): void
+    {
+        $session = $this->unit3Session();
+        $session->exam->update(['question_order' => 'random']);
+
+        $this->as('ibrahim@ll.test')->getJson("/api/v1/student/exams/{$session->id}/cover")->assertJsonPath('randomOrder', true);
+    }
+
+    public function test_the_teacher_still_marks_in_their_own_order_when_students_got_random(): void
+    {
+        $this->unit3Session()->exam->update(['question_order' => 'random']);
+        $waiting = Attempt::where('student_id', User::where('email', 'mariyam@ll.test')->value('id'))->where('status', 'submitted')->firstOrFail();
+
+        $written = $this->as('aishath@ll.test')->getJson("/api/v1/tutor/attempts/{$waiting->id}")->assertOk()->json('written');
+
+        $this->assertSame([7, 8], array_column($written, 'position'), 'the two written questions keep the teachers numbers');
+    }
 
     public function test_the_attempt_never_contains_the_answer_key(): void
     {

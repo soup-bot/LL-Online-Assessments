@@ -374,7 +374,7 @@ const mockApi = {
             timeLimitMinutes: exam.timeLimitMinutes,
             questionCount: questions.length,
             totalMarks: totalMarks(questions),
-            freeNavigation: exam.navigation !== "in_order",
+            randomOrder: exam.questionOrder === "random",
             globalRules: GLOBAL_RULES.map((r) => ({ id: r.id, text: r.text })),
             examRules: exam.rules,
             student: profileOf(db, user),

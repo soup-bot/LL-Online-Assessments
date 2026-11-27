@@ -190,13 +190,13 @@ class TutorApiTest extends TestCase
         $batchA = SchoolClass::where('name', 'like', '%Batch A')->firstOrFail();
 
         $this->as('aishath@ll.test')->patchJson("/api/v1/tutor/exams/{$unit4->id}", [
-            'title' => '  Unit 4 Test: Market Failure (v2)  ', 'timeLimitMinutes' => 40, 'navigation' => 'in_order', 'rules' => 'No phones.', 'classIds' => [$batchA->id],
+            'title' => '  Unit 4 Test: Market Failure (v2)  ', 'timeLimitMinutes' => 40, 'questionOrder' => 'random', 'rules' => 'No phones.', 'classIds' => [$batchA->id],
         ])->assertOk();
 
         $unit4->refresh();
         $this->assertSame('Unit 4 Test: Market Failure (v2)', $unit4->title);
         $this->assertSame(40, $unit4->time_limit_minutes);
-        $this->assertSame('in_order', $unit4->navigation->value);
+        $this->assertSame('random', $unit4->question_order->value);
         $this->assertSame([$batchA->id], ExamSession::where('exam_id', $unit4->id)->pluck('school_class_id')->all());
 
         $this->patchJson("/api/v1/tutor/exams/{$unit4->id}", ['classIds' => [$batchA->id, $batchB->id]])->assertOk();
@@ -220,7 +220,7 @@ class TutorApiTest extends TestCase
 
         $this->patchJson("/api/v1/tutor/exams/{$unit4->id}", ['timeLimitMinutes' => 0])
             ->assertStatus(422)->assertJson(['code' => 'validation', 'message' => 'Time limit must be between 1 and 600 minutes.']);
-        $this->patchJson("/api/v1/tutor/exams/{$unit4->id}", ['navigation' => 'sideways'])->assertStatus(422);
+        $this->patchJson("/api/v1/tutor/exams/{$unit4->id}", ['questionOrder' => 'sideways'])->assertStatus(422);
     }
 
     public function test_a_published_exam_is_locked(): void
@@ -443,6 +443,49 @@ class TutorApiTest extends TestCase
     public function test_an_admin_cannot_delete_an_exam(): void
     {
         $this->as('admin@ll.test')->deleteJson('/api/v1/tutor/exams/'.$this->exam('Unit 4')->id)->assertForbidden();
+    }
+
+    public function test_questions_can_be_rearranged_in_a_draft_and_keep_their_approval(): void
+    {
+        $unit4 = $this->exam('Unit 4');
+        $this->as('aishath@ll.test');
+        $before = $unit4->questions()->orderBy('position')->get();
+        $this->assertGreaterThan(1, $before->count());
+        $before->first()->update(['approved' => true]);
+
+        $reversed = $before->pluck('id')->reverse()->values()->all();
+        $this->putJson("/api/v1/tutor/exams/{$unit4->id}/questions/order", ['ids' => $reversed])->assertOk();
+
+        $after = $unit4->questions()->orderBy('position')->get();
+        $this->assertSame($reversed, $after->pluck('id')->all());
+        $this->assertSame(range(1, $before->count()), $after->pluck('position')->all());
+        $this->assertTrue($after->last()->approved, 'moving a question does not change its approval');
+        $this->getJson("/api/v1/tutor/exams/{$unit4->id}")->assertJsonPath('questions.0.id', $reversed[0])->assertJsonPath('questions.0.position', 1);
+    }
+
+    public function test_the_new_order_must_list_every_question_once(): void
+    {
+        $unit4 = $this->exam('Unit 4');
+        $ids = $unit4->questions()->orderBy('position')->pluck('id')->all();
+        $this->as('aishath@ll.test');
+
+        $this->putJson("/api/v1/tutor/exams/{$unit4->id}/questions/order", ['ids' => array_slice($ids, 1)])->assertStatus(422);
+        $this->putJson("/api/v1/tutor/exams/{$unit4->id}/questions/order", ['ids' => [...$ids, 99999]])->assertStatus(422);
+        $this->putJson("/api/v1/tutor/exams/{$unit4->id}/questions/order", ['ids' => [$ids[0], $ids[0]]])->assertStatus(422);
+        $this->putJson("/api/v1/tutor/exams/{$unit4->id}/questions/order", [])->assertStatus(422);
+        $this->assertSame($ids, $unit4->questions()->orderBy('position')->pluck('id')->all(), 'a refused request changes nothing');
+    }
+
+    public function test_only_the_owner_can_rearrange_and_only_while_it_is_a_draft(): void
+    {
+        $unit4 = $this->exam('Unit 4');
+        $unit3 = $this->exam('Unit 3');
+        $ids4 = $unit4->questions()->pluck('id')->all();
+        $ids3 = $unit3->questions()->pluck('id')->all();
+
+        $this->as('ali@ll.test')->putJson("/api/v1/tutor/exams/{$unit4->id}/questions/order", ['ids' => $ids4])->assertNotFound();
+        $this->as('admin@ll.test')->putJson("/api/v1/tutor/exams/{$unit4->id}/questions/order", ['ids' => $ids4])->assertForbidden();
+        $this->as('aishath@ll.test')->putJson("/api/v1/tutor/exams/{$unit3->id}/questions/order", ['ids' => array_reverse($ids3)])->assertStatus(409);
     }
 
     public function test_an_exam_with_no_questions_or_classes_cannot_be_published(): void

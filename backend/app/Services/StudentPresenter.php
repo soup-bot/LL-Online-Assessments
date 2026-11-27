@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AttemptStatus;
 use App\Enums\QuestionKind;
+use App\Enums\QuestionOrder;
 use App\Models\Attempt;
 use App\Models\Exam;
 use App\Models\ExamSession;
@@ -88,7 +89,7 @@ class StudentPresenter
             'timeLimitMinutes' => (int) $exam->time_limit_minutes,
             'questionCount' => $stats['questionCount'],
             'totalMarks' => $stats['totalMarks'],
-            'freeNavigation' => $exam->navigation->value !== 'in_order',
+            'randomOrder' => $exam->question_order === QuestionOrder::Random,
             'globalRules' => array_map(fn ($r) => ['id' => $r['id'], 'text' => $r['text']], config('exam.global_rules')),
             'examRules' => $exam->rules ?? '',
             'student' => $this->profile($student),
@@ -101,7 +102,7 @@ class StudentPresenter
     {
         $session = $attempt->session;
         $class = $session->schoolClass;
-        $questions = Question::where('exam_id', $session->exam_id)->orderBy('position')->get();
+        $questions = $this->inStudentsOrder($attempt, Question::where('exam_id', $session->exam_id)->orderBy('position')->get());
         $answers = $attempt->answers()->get()->keyBy('question_id');
 
         return [
@@ -117,7 +118,7 @@ class StudentPresenter
             // Only what a student may see while sitting: never the answer key or marking points.
             'questions' => $questions->map(fn (Question $q) => [
                 'id' => $q->id,
-                'position' => $q->position,
+                'position' => $q->displayPosition,
                 'kind' => $q->kind->value,
                 'prompt' => $q->prompt,
                 'points' => $q->points,
@@ -258,7 +259,7 @@ class StudentPresenter
         $session = $attempt->session;
         $exam = $session->exam;
         $class = $session->schoolClass;
-        $questions = Question::where('exam_id', $exam->id)->orderBy('position')->get();
+        $questions = $this->inStudentsOrder($attempt, Question::where('exam_id', $exam->id)->orderBy('position')->get());
         $answers = $attempt->answers()->get()->keyBy('question_id');
         $score = (int) $answers->sum('awarded_marks');
         $total = (int) $questions->sum('points');
@@ -279,7 +280,7 @@ class StudentPresenter
                 $a = $answers->get($q->id);
 
                 return [
-                    'position' => $q->position,
+                    'position' => $q->displayPosition,
                     'kind' => $q->kind->value,
                     'prompt' => $q->prompt,
                     'points' => $q->points,
@@ -291,6 +292,25 @@ class StudentPresenter
             })->values()->all(),
             'student' => $this->profile($student),
         ];
+    }
+
+    /**
+     * The exam's questions in the order this student sees them, each carrying `displayPosition` (1, 2, 3...). With "in order"
+     * that is the teacher's order. With "random" it is a shuffle that depends only on the attempt, so it differs from
+     * student to student but is the same every time this student reloads, and again when they read their result.
+     *
+     * @param  Collection<int, Question>  $questions  in the teacher's order
+     * @return Collection<int, Question>
+     */
+    private function inStudentsOrder(Attempt $attempt, Collection $questions): Collection
+    {
+        if ($attempt->session->exam->question_order === QuestionOrder::Random) {
+            $questions = $questions
+                ->sortBy(fn (Question $q) => [crc32($attempt->id.':'.$q->id), $q->id])
+                ->values();
+        }
+
+        return $questions->values()->each(fn (Question $q, int $i) => $q->displayPosition = $i + 1);
     }
 
     private function optionText(Question $q, ?string $key): ?string

@@ -73,7 +73,8 @@ export interface CoverData {
   questionCount: number;
   totalMarks: number;
   /** Students may move between questions in any order. */
-  freeNavigation: boolean;
+  /** Each student sees the questions in their own order. */
+  randomOrder: boolean;
   globalRules: { id: string; text: string }[];
   examRules: string;
   student: StudentProfile;

@@ -6,6 +6,7 @@ use App\Enums\QuestionKind;
 use App\Exceptions\ApiException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Tutor\ApprovalRequest;
+use App\Http\Requests\Tutor\ReorderQuestionsRequest;
 use App\Http\Requests\Tutor\ImportQuestionsRequest;
 use App\Http\Requests\Tutor\SaveQuestionRequest;
 use App\Models\Exam;
@@ -104,6 +105,20 @@ class QuestionController extends Controller
     {
         $exam = $this->access->draft($request->user(), $exam);
         $this->builder->deleteQuestion($exam, $this->question($exam, $question));
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Rearrange the questions
+     *
+     * Send every question id once, in the order you want (422 otherwise). Only drafts can be rearranged; a published
+     * exam answers 409. Approvals are kept.
+     */
+    public function reorder(ReorderQuestionsRequest $request, int $exam): JsonResponse
+    {
+        $exam = $this->access->draft($request->user(), $exam);
+        $this->builder->reorderQuestions($exam, $request->validated('ids'));
 
         return response()->json(['ok' => true]);
     }

@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Enums\ExamStatus;
-use App\Enums\Navigation;
+use App\Enums\QuestionOrder;
 use App\Enums\QuestionKind;
 use App\Enums\SessionStatus;
 use App\Exceptions\ApiException;
@@ -28,7 +28,7 @@ class ExamBuilderService
                 'owner_id' => $teacher->id,
                 'title' => 'Untitled exam',
                 'time_limit_minutes' => 30,
-                'navigation' => Navigation::Any,
+                'question_order' => QuestionOrder::InOrder,
                 'rules' => '',
                 'status' => ExamStatus::Draft,
             ]);
@@ -43,7 +43,7 @@ class ExamBuilderService
     }
 
     /**
-     * @param  array{title?: string, timeLimitMinutes?: int, navigation?: string, rules?: ?string, classIds?: list<int>}  $patch
+     * @param  array{title?: string, timeLimitMinutes?: int, questionOrder?: string, rules?: ?string, classIds?: list<int>}  $patch
      */
     public function update(Exam $exam, array $patch): void
     {
@@ -54,8 +54,8 @@ class ExamBuilderService
             if (array_key_exists('timeLimitMinutes', $patch)) {
                 $exam->time_limit_minutes = (int) $patch['timeLimitMinutes'];
             }
-            if (array_key_exists('navigation', $patch)) {
-                $exam->navigation = Navigation::from($patch['navigation']);
+            if (array_key_exists('questionOrder', $patch)) {
+                $exam->question_order = QuestionOrder::from($patch['questionOrder']);
             }
             if (array_key_exists('rules', $patch)) {
                 $exam->rules = (string) ($patch['rules'] ?? '');
@@ -147,6 +147,30 @@ class ExamBuilderService
         });
 
         return ['question' => $question];
+    }
+
+    /**
+     * Put the exam's questions in a new order. The list must hold every question exactly once. Positions are unique per
+     * exam, so they are first moved out of the way and then handed out again from 1. Approval is not touched: moving a
+     * question changes nothing about its answer key.
+     *
+     * @param  list<int>  $ids  question ids in the new order
+     */
+    public function reorderQuestions(Exam $exam, array $ids): void
+    {
+        $existing = $exam->questions()->pluck('id')->all();
+        $given = array_values($ids);
+
+        if (count($given) !== count($existing) || array_diff($existing, $given) || array_diff($given, $existing)) {
+            throw ApiException::validation('Send every question once, in the order you want.');
+        }
+
+        DB::transaction(function () use ($exam, $given) {
+            $exam->questions()->increment('position', 1000);
+            foreach ($given as $i => $id) {
+                Question::where('exam_id', $exam->id)->whereKey($id)->update(['position' => $i + 1]);
+            }
+        });
     }
 
     public function deleteQuestion(Exam $exam, Question $question): void

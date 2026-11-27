@@ -175,7 +175,7 @@ class TeacherPresenter
             'title' => $exam->title,
             'status' => $exam->status->value,
             'timeLimitMinutes' => (int) $exam->time_limit_minutes,
-            'navigation' => $exam->navigation->value,
+            'questionOrder' => $exam->question_order->value,
             'rules' => $exam->rules ?? '',
             'questions' => $questions->map(fn (Question $q) => [
                 'id' => $q->id, 'position' => $q->position, 'kind' => $q->kind->value, 'prompt' => $q->prompt, 'points' => $q->points, 'approved' => $q->approved,

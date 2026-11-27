@@ -104,7 +104,7 @@ function CoverContent({ data }: { data: CoverData }) {
           />
           <Stat
             value={String(data.questionCount)}
-            label={data.freeNavigation ? "Questions, any order" : "Questions"}
+            label={data.randomOrder ? "Questions, random order" : "Questions"}
             tone="bg-sky"
             ink="text-sky-deep"
             sub="text-[#1e4f86]"

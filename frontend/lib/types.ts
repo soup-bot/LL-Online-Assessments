@@ -52,15 +52,15 @@ export interface Question {
 
 export type ExamStatus = "draft" | "published";
 
-/** "any": students may move between questions freely. "in_order": one way, no going back. */
-export type Navigation = "any" | "in_order";
+/** "in_order": everyone sees the teacher's order. "random": each student gets their own order. */
+export type QuestionOrder = "in_order" | "random";
 
 export interface Exam {
   id: number;
   title: string;
   ownerId: number;
   timeLimitMinutes: number;
-  navigation: Navigation;
+  questionOrder: QuestionOrder;
   rules: string;
   status: ExamStatus;
   publishedAt: string | null;

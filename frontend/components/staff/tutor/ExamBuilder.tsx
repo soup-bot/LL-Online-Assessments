@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Check, Lock, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { Reorder, useDragControls } from "motion/react";
+import { Check, GripVertical, Loader2, Lock, Pencil, Sparkles, Trash2 } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { tutorApi } from "@/lib/api-staff";
 import type { ExamBuilder as ExamBuilderData } from "@/lib/staff-types";
@@ -37,7 +38,7 @@ export function ExamBuilderScreen() {
   );
 }
 
-function BuilderContent({ data, onChange }: { data: ExamBuilderData; onChange: () => void }) {
+function BuilderContent({ data, onChange }: { data: ExamBuilderData; onChange: () => void | Promise<void> }) {
   const router = useRouter();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
@@ -143,7 +144,7 @@ function SettingsCard({ data, locked, onChange }: { data: ExamBuilderData; locke
   const toast = useToast();
   const [title, setTitle] = useState(data.title);
   const [minutes, setMinutes] = useState(String(data.timeLimitMinutes));
-  const [navigation, setNavigation] = useState(data.navigation);
+  const [questionOrder, setQuestionOrder] = useState(data.questionOrder);
   const [rules, setRules] = useState(data.rules);
   const [classIds, setClassIds] = useState(data.classes.filter((c) => c.linked).map((c) => c.classId));
   const [saved, setSaved] = useState<"idle" | "saving" | "saved">("idle");
@@ -161,7 +162,7 @@ function SettingsCard({ data, locked, onChange }: { data: ExamBuilderData; locke
     setSaved("saving");
     const id = window.setTimeout(async () => {
       try {
-        await tutorApi.updateExam(data.id, { title, timeLimitMinutes: mins, navigation, rules, classIds });
+        await tutorApi.updateExam(data.id, { title, timeLimitMinutes: mins, questionOrder, rules, classIds });
         setSaved("saved");
         onChange();
       } catch (e) {
@@ -171,7 +172,7 @@ function SettingsCard({ data, locked, onChange }: { data: ExamBuilderData; locke
     }, 600);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, minutes, navigation, rules, classIds]);
+  }, [title, minutes, questionOrder, rules, classIds]);
 
   const invalidMinutes = !(Number(minutes) >= 1);
 
@@ -209,10 +210,10 @@ function SettingsCard({ data, locked, onChange }: { data: ExamBuilderData; locke
             aria-invalid={invalidMinutes || undefined}
           />
         </Field>
-        <Field label="Order">
-          <Select value={navigation} onChange={(e) => setNavigation(e.target.value as ExamBuilderData["navigation"])} disabled={locked}>
-            <option value="any">Any order</option>
-            <option value="in_order">In order only</option>
+        <Field label="Question order">
+          <Select value={questionOrder} onChange={(e) => setQuestionOrder(e.target.value as ExamBuilderData["questionOrder"])} disabled={locked}>
+            <option value="in_order">In order</option>
+            <option value="random">Random</option>
           </Select>
         </Field>
       </div>
@@ -254,21 +255,83 @@ function SettingsCard({ data, locked, onChange }: { data: ExamBuilderData; locke
 
 /* ---------------------------------------------------------------- questions */
 
-function QuestionsCard({ data, locked, onChange }: { data: ExamBuilderData; locked: boolean; onChange: () => void }) {
+function QuestionsCard({ data, locked, onChange }: { data: ExamBuilderData; locked: boolean; onChange: () => void | Promise<void> }) {
   const toast = useToast();
-  const [busyId, setBusyId] = useState<number | null>(null);
+  // Every question being saved shows its own spinner. They all clear together once the last save has answered and the
+  // refreshed list is on screen, so quick clicks on several questions never leave one showing its old state.
+  const [busyIds, setBusyIds] = useState<ReadonlySet<number>>(new Set());
+  const pendingSaves = useRef(0);
+  // The order on screen, as a list of question ids. The drag library tracks the ids, which never change, so a
+  // refresh of the question data in the middle of (or just after) a drag can't confuse it.
+  const serverIds = data.questions.map((q) => q.id);
+  const [order, setOrder] = useState(serverIds);
+  const orderRef = useRef(order);
+  const savedOrder = useRef(serverIds.join(","));
+  const busyMoving = useRef(0);
+
+  // Follow the server when it differs (a question added or deleted, a failed save), but never while a drag or a save is under way.
+  useEffect(() => {
+    const ids = data.questions.map((q) => q.id);
+    if (busyMoving.current > 0 || ids.join(",") === orderRef.current.join(",")) return;
+    orderRef.current = ids;
+    savedOrder.current = ids.join(",");
+    setOrder(ids);
+  }, [data.questions]);
+
+  const byId = new Map(data.questions.map((q) => [q.id, q]));
+  const items = order.map((id) => byId.get(id)).filter((q): q is (typeof data.questions)[number] => q !== undefined);
+
+  function arrange(next: number[]) {
+    orderRef.current = next;
+    setOrder(next);
+  }
+
+  /** Saves the order if it changed. A failed save puts the server's order back. */
+  async function saveOrder() {
+    const ids = orderRef.current;
+    if (ids.join(",") === savedOrder.current) return;
+    savedOrder.current = ids.join(",");
+    busyMoving.current += 1;
+    try {
+      await tutorApi.reorderQuestions(data.id, ids);
+    } catch (e) {
+      toast(toApiError(e).message, "error");
+      savedOrder.current = "";
+      orderRef.current = [];
+    } finally {
+      busyMoving.current -= 1;
+    }
+    onChange();
+  }
+
+  /** Keyboard and tap alternative to dragging: arrow keys on the handle move a question one place. */
+  function move(from: number, to: number) {
+    if (to < 0 || to >= orderRef.current.length) return;
+    const next = [...orderRef.current];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    arrange(next);
+    void saveOrder();
+    window.requestAnimationFrame(() => document.getElementById(`drag-${moved}`)?.focus());
+  }
 
   async function toggle(id: number, approved: boolean) {
-    setBusyId(id);
+    pendingSaves.current += 1;
+    setBusyIds((prev) => new Set(prev).add(id));
     try {
       await tutorApi.setApproved(data.id, id, approved);
-      onChange();
+      await onChange();
     } catch (e) {
       toast(toApiError(e).message, "error");
     } finally {
-      setBusyId(null);
+      pendingSaves.current -= 1;
+      if (pendingSaves.current === 0) setBusyIds(new Set());
     }
   }
+
+  const body = (q: (typeof items)[number], index: number) => (
+    <QuestionRowBody q={q} number={index + 1} examId={data.id} locked={locked} busy={busyIds.has(q.id)} onToggle={(approved) => void toggle(q.id, approved)} />
+  );
 
   return (
     <Card className="flex min-w-0 flex-[999_1_520px] flex-col gap-3 p-[22px]">
@@ -283,54 +346,31 @@ function QuestionsCard({ data, locked, onChange }: { data: ExamBuilderData; lock
         <p className="rounded-2xl bg-paper px-4 py-6 text-center text-sm font-bold text-muted">No questions yet. Add your first one below.</p>
       )}
 
-      <ol className="flex flex-col gap-2.5">
-        {data.questions.map((q) => (
-          <li key={q.id} className="flex min-h-16 items-center gap-3 rounded-[20px] border border-[#f0ece5] bg-canvas px-3 py-2.5">
-            <Link href={`/tutor/exams/${data.id}/questions/${q.id}`} className="flex min-w-0 flex-1 items-center gap-3 text-ink no-underline hover:text-ink">
-              <KindBadge kind={q.kind} label={String(q.position)} className="size-10 shrink-0 rounded-[13px]" />
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-xs font-extrabold text-muted">
-                  {KIND_META[q.kind].label} · {plural(q.points, "mark")}
-                </span>
-                <span className="truncate text-sm font-bold">{q.prompt || "Untitled question"}</span>
-              </span>
-            </Link>
-
-            {locked ? (
-              <StatusChip tone={q.approved ? "mint" : "amber"}>{q.approved ? "Approved" : "Not approved"}</StatusChip>
-            ) : (
-              <button
-                type="button"
-                role="switch"
-                aria-checked={q.approved}
-                aria-label={`Question ${q.position} approved`}
-                disabled={busyId === q.id}
-                onClick={() => void toggle(q.id, !q.approved)}
-                className={cn(
-                  "flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-black transition",
-                  q.approved ? "bg-mint text-mint-deep" : "border-2 border-line-input bg-white text-ink-2 hover:bg-paper",
-                )}
+      {locked ? (
+        <ol className="flex flex-col gap-2.5">
+          {items.map((q, i) => (
+            <li key={q.id} className="flex min-h-16 items-center gap-3 rounded-[20px] border border-[#f0ece5] bg-canvas px-3 py-2.5">
+              {body(q, i)}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <>
+          {items.length > 1 && <p className="-mt-1 text-xs font-bold text-muted">Drag the handle to rearrange, or focus it and press the up and down arrow keys.</p>}
+          <Reorder.Group as="ol" axis="y" values={order} onReorder={arrange} className="flex flex-col gap-2.5">
+            {items.map((q, i) => (
+              <SortableRow key={q.id} q={q} index={i} total={items.length} onMove={move} onDragStart={() => (busyMoving.current += 1)}
+                onDragEnd={() => {
+                  busyMoving.current = Math.max(0, busyMoving.current - 1);
+                  void saveOrder();
+                }}
               >
-                <span
-                  aria-hidden
-                  className={cn("grid size-4 place-items-center rounded-[5px]", q.approved ? "bg-mint-ink text-white" : "border-2 border-[#cfc9be] bg-white")}
-                >
-                  {q.approved && <Check className="size-3" strokeWidth={4} />}
-                </span>
-                <span className="hidden sm:inline">{q.approved ? "Approved" : "Approve"}</span>
-              </button>
-            )}
-
-            <Link
-              href={`/tutor/exams/${data.id}/questions/${q.id}`}
-              aria-label={`${locked ? "View" : "Edit"} question ${q.position}`}
-              className="grid size-10 shrink-0 place-items-center rounded-full border-2 border-line-input bg-white text-ink-2 hover:bg-paper hover:text-ink"
-            >
-              {locked ? <Lock className="size-4" strokeWidth={2.6} aria-hidden /> : <Pencil className="size-4" strokeWidth={2.6} aria-hidden />}
-            </Link>
-          </li>
-        ))}
-      </ol>
+                {body(q, i)}
+              </SortableRow>
+            ))}
+          </Reorder.Group>
+        </>
+      )}
 
       {!locked && (
         <div className="mt-1 flex flex-wrap items-center gap-2.5 rounded-[20px] border-2 border-dashed border-[#e0d9ce] p-3.5">
@@ -353,6 +393,136 @@ function QuestionsCard({ data, locked, onChange }: { data: ExamBuilderData; lock
         </div>
       )}
     </Card>
+  );
+}
+
+/** One question in the list, with a handle to drag it by. Only the handle drags, so the buttons and links still work. */
+function SortableRow({
+  q,
+  index,
+  total,
+  onMove,
+  onDragStart,
+  onDragEnd,
+  children,
+}: {
+  q: ExamBuilderData["questions"][number];
+  index: number;
+  total: number;
+  onMove: (from: number, to: number) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+  children: ReactNode;
+}) {
+  const controls = useDragControls();
+  // The lifted look is ours, switched on and off by the drag events, so it can never get stuck.
+  const [lifted, setLifted] = useState(false);
+  return (
+    <Reorder.Item
+      as="li"
+      value={q.id}
+      dragListener={false}
+      dragControls={controls}
+      onDragStart={() => {
+        setLifted(true);
+        onDragStart();
+      }}
+      onDragEnd={() => {
+        setLifted(false);
+        onDragEnd();
+      }}
+      animate={{ scale: lifted ? 1.015 : 1, boxShadow: lifted ? "0 14px 30px rgba(31,36,51,0.18)" : "0 0 0 rgba(31,36,51,0)" }}
+      className={cn("relative flex min-h-16 items-center gap-2 rounded-[20px] border border-[#f0ece5] bg-canvas py-2.5 pl-1.5 pr-3", lifted && "z-10")}
+    >
+      <button
+        type="button"
+        id={`drag-${q.id}`}
+        aria-label={`Move question ${index + 1} of ${total}. Drag it, or press the up or down arrow key.`}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          controls.start(e);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            onMove(index, index + (e.key === "ArrowUp" ? -1 : 1));
+          }
+        }}
+        className="grid h-10 w-7 shrink-0 cursor-grab touch-none place-items-center rounded-lg text-subtle transition hover:bg-chip hover:text-ink active:cursor-grabbing"
+      >
+        <GripVertical className="size-[18px]" strokeWidth={2.4} aria-hidden />
+      </button>
+      {children}
+    </Reorder.Item>
+  );
+}
+
+/** What a question row shows: its number and text, the approval switch and the edit link. */
+function QuestionRowBody({
+  q,
+  number,
+  examId,
+  locked,
+  busy,
+  onToggle,
+}: {
+  q: ExamBuilderData["questions"][number];
+  number: number;
+  examId: number;
+  locked: boolean;
+  busy: boolean;
+  onToggle: (approved: boolean) => void;
+}) {
+  return (
+    <>
+      <Link href={`/tutor/exams/${examId}/questions/${q.id}`} className="flex min-w-0 flex-1 items-center gap-3 text-ink no-underline hover:text-ink">
+        <KindBadge kind={q.kind} label={String(number)} className="size-10 shrink-0 rounded-[13px]" />
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-xs font-extrabold text-muted">
+            {KIND_META[q.kind].label} · {plural(q.points, "mark")}
+          </span>
+          <span className="truncate text-sm font-bold">{q.prompt || "Untitled question"}</span>
+        </span>
+      </Link>
+
+      {locked ? (
+        <StatusChip tone={q.approved ? "mint" : "amber"}>{q.approved ? "Approved" : "Not approved"}</StatusChip>
+      ) : (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={q.approved}
+          aria-label={`Question ${number} approved`}
+          disabled={busy}
+          aria-busy={busy}
+          onClick={() => onToggle(!q.approved)}
+          className={cn(
+            "flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-black transition disabled:cursor-wait",
+            q.approved ? "bg-mint text-mint-deep" : "border-2 border-line-input bg-white text-ink-2 hover:bg-paper",
+          )}
+        >
+          {busy ? (
+            <Loader2 aria-hidden className="size-4 motion-safe:animate-spin" strokeWidth={3} />
+          ) : (
+            <span
+              aria-hidden
+              className={cn("grid size-4 place-items-center rounded-[5px]", q.approved ? "bg-mint-ink text-white" : "border-2 border-[#cfc9be] bg-white")}
+            >
+              {q.approved && <Check className="size-3" strokeWidth={4} />}
+            </span>
+          )}
+          <span className="hidden sm:inline">{busy ? "Saving" : q.approved ? "Approved" : "Approve"}</span>
+        </button>
+      )}
+
+      <Link
+        href={`/tutor/exams/${examId}/questions/${q.id}`}
+        aria-label={`${locked ? "View" : "Edit"} question ${number}`}
+        className="grid size-10 shrink-0 place-items-center rounded-full border-2 border-line-input bg-white text-ink-2 hover:bg-paper hover:text-ink"
+      >
+        {locked ? <Lock className="size-4" strokeWidth={2.6} aria-hidden /> : <Pencil className="size-4" strokeWidth={2.6} aria-hidden />}
+      </Link>
+    </>
   );
 }
 

@@ -278,9 +278,9 @@ const UNIT_4_QUESTIONS: Question[] = [
 ];
 
 const EXAMS: Exam[] = [
-  { id: 1, title: "Unit 3 Test: Demand and Supply", ownerId: 1, timeLimitMinutes: 30, navigation: "any", rules: RULES_UNIT_3, status: "published", publishedAt: null },
-  { id: 2, title: "Unit 2 Test: Elasticity", ownerId: 1, timeLimitMinutes: 20, navigation: "any", rules: "Calculators are allowed.", status: "published", publishedAt: null },
-  { id: 3, title: "Unit 4 Test: Market Failure", ownerId: 1, timeLimitMinutes: 25, navigation: "any", rules: "", status: "draft", publishedAt: null },
+  { id: 1, title: "Unit 3 Test: Demand and Supply", ownerId: 1, timeLimitMinutes: 30, questionOrder: "in_order", rules: RULES_UNIT_3, status: "published", publishedAt: null },
+  { id: 2, title: "Unit 2 Test: Elasticity", ownerId: 1, timeLimitMinutes: 20, questionOrder: "in_order", rules: "Calculators are allowed.", status: "published", publishedAt: null },
+  { id: 3, title: "Unit 4 Test: Market Failure", ownerId: 1, timeLimitMinutes: 25, questionOrder: "in_order", rules: "", status: "draft", publishedAt: null },
 ];
 
 const iso = (msFromNow: number) => new Date(Date.now() + msFromNow).toISOString();

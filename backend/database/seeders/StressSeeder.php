@@ -131,7 +131,7 @@ class StressSeeder extends Seeder
     {
         $published = $plan !== 'draft';
         $examId = DB::table('exams')->insertGetId([
-            'owner_id' => $ownerId, 'title' => $title, 'time_limit_minutes' => $minutes, 'navigation' => 'any',
+            'owner_id' => $ownerId, 'title' => $title, 'time_limit_minutes' => $minutes, 'question_order' => 'in_order',
             'rules' => 'Calculators are not allowed.', 'status' => $published ? 'published' : 'draft',
             'published_at' => $published ? now()->subDays(30 - $k) : null, 'created_at' => now(), 'updated_at' => now(),
         ]);

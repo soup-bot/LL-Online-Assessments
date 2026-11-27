@@ -154,6 +154,23 @@ class AuthTest extends TestCase
         $this->assertDatabaseMissing('sessions', ['user_id' => $student->id]);
     }
 
+    public function test_the_whole_api_has_a_generous_limit_counted_per_user(): void
+    {
+        config(['exam.api_per_minute' => 3]);
+        $one = User::factory()->create();
+        $two = User::factory()->create();
+        $tokenOne = $one->createToken('t')->plainTextToken;
+        $tokenTwo = $two->createToken('t')->plainTextToken;
+
+        foreach (range(1, 3) as $_) {
+            $this->as($tokenOne)->getJson('/api/v1/auth/me')->assertOk();
+        }
+        $this->as($tokenOne)->getJson('/api/v1/auth/me')->assertStatus(429)->assertJsonPath('code', 'throttled');
+
+        // someone else on the same address is not held up by it
+        $this->as($tokenTwo)->getJson('/api/v1/auth/me')->assertOk();
+    }
+
     public function test_me_returns_the_signed_in_user(): void
     {
         $user = User::factory()->admin()->create();

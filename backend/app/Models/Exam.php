@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ExamStatus;
-use App\Enums\Navigation;
+use App\Enums\QuestionOrder;
 use Database\Factories\ExamFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,12 +15,12 @@ class Exam extends Model
     /** @use HasFactory<ExamFactory> */
     use HasFactory;
 
-    protected $fillable = ['owner_id', 'title', 'time_limit_minutes', 'navigation', 'rules', 'status', 'published_at'];
+    protected $fillable = ['owner_id', 'title', 'time_limit_minutes', 'question_order', 'rules', 'status', 'published_at'];
 
     protected function casts(): array
     {
         return [
-            'navigation' => Navigation::class,
+            'question_order' => QuestionOrder::class,
             'status' => ExamStatus::class,
             'published_at' => 'datetime',
         ];
