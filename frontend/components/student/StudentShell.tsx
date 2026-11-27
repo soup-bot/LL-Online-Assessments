@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FileText, LogOut, Trophy } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { cn, initials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Button, LogoMark, Modal } from "@/components/ui";
 import { NavTabs } from "@/components/ui/NavTabs";
 
@@ -16,20 +17,11 @@ const tabs: { id: Tab; href: string; label: string; Icon: typeof FileText }[] = 
   { id: "results", href: "/student/results", label: "Results", Icon: Trophy },
 ];
 
-/** Avatar colours by role, so staff and students are easy to tell apart at a glance. */
-const AVATAR_TONE = {
-  student: "bg-mint text-mint-deep",
-  tutor: "bg-peach-mid text-peach-ink",
-  admin: "bg-sky text-sky-deep",
-} as const;
-
-function Avatar({ name, className, role = "student" }: { name: string; className?: string; role?: keyof typeof AVATAR_TONE }) {
+/** The signed-in person's picture: a white outline of a person on the app's violet. The file is cropped to the drawing, so it centres exactly. */
+function Avatar({ className }: { name?: string; className?: string; role?: "student" | "tutor" | "admin" }) {
   return (
-    <span
-      aria-hidden
-      className={cn("grid shrink-0 place-items-center rounded-full font-black", AVATAR_TONE[role], className)}
-    >
-      {initials(name)}
+    <span aria-hidden className={cn("grid shrink-0 place-items-center overflow-hidden rounded-full bg-squiggly bg-secondary", className)}>
+      <Image src="/avatar.png" alt="" unoptimized width={240} height={277} className="h-auto w-[54%]" />
     </span>
   );
 }
