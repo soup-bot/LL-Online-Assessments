@@ -30,6 +30,15 @@ class AppServiceProvider extends ServiceProvider
             $openApi->secure(SecurityScheme::http('bearer'));
         });
 
+        // The whole API: generous, per signed-in user (or per address when nobody is signed in).
+        RateLimiter::for('api', function (Request $request) {
+            $user = $request->user('sanctum');
+
+            return $user
+                ? Limit::perMinute((int) config('exam.api_per_minute'))->by('user:'.$user->id)
+                : Limit::perMinute((int) config('exam.api_guest_per_minute'))->by('ip:'.$request->ip());
+        });
+
         RateLimiter::for('login', fn (Request $request) => Limit::perMinute(5)->by(Str::lower((string) $request->input('email')).'|'.$request->ip()));
     }
 }

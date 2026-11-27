@@ -40,6 +40,12 @@ return [
     'default_password' => env('DEFAULT_USER_PASSWORD', 'password'),
 
     // List endpoints: default and largest page size.
+    // A generous ceiling on how many API calls one person can make a minute. Autosave, the live list and marking stay
+    // far below it; it only stops a runaway script. Signed-in users are counted one by one, so a whole class
+    // sharing one school address does not count against each other.
+    'api_per_minute' => 600,
+    'api_guest_per_minute' => 120,
+
     'per_page' => 10,
     'max_per_page' => 100,
 ];

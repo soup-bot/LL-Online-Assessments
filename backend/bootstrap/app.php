@@ -22,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
         // The web app signs in with a cookie (Sanctum's SPA mode): requests from FRONTEND_URL get a session and CSRF check.
         // Anything else (tests, scripts, other clients) still uses a Bearer token.
         $middleware->statefulApi();
+
+        // A generous limit on every API call (see RateLimiter 'api' in AppServiceProvider). Sign-in has its own, tighter one.
+        $middleware->throttleApi('api');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // A refused request (wrong password, already handed in...) is the client's mistake, not a crash: keep it out of the error log.
