@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { Reorder, useDragControls } from "motion/react";
-import { Check, GripVertical, Loader2, Lock, Pencil, Sparkles, Trash2 } from "lucide-react";
+import { ArrowRight, Check, GripVertical, Loader2, Lock, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { tutorApi } from "@/lib/api-staff";
 import type { ExamBuilder as ExamBuilderData } from "@/lib/staff-types";
@@ -255,6 +255,14 @@ function SettingsCard({ data, locked, onChange }: { data: ExamBuilderData; locke
 
 /* ---------------------------------------------------------------- questions */
 
+/** One line under each question type on the "Add a question" tiles. */
+const KIND_HINT = {
+  mcq: "One correct of four",
+  true_false: "Yes or no",
+  fill_blank: "One gap in a sentence",
+  written: "You mark it",
+} as const;
+
 function QuestionsCard({ data, locked, onChange }: { data: ExamBuilderData; locked: boolean; onChange: () => void | Promise<void> }) {
   const toast = useToast();
   // Every question being saved shows its own spinner. They all clear together once the last save has answered and the
@@ -373,23 +381,46 @@ function QuestionsCard({ data, locked, onChange }: { data: ExamBuilderData; lock
       )}
 
       {!locked && (
-        <div className="mt-1 flex flex-wrap items-center gap-2.5 rounded-[20px] border-2 border-dashed border-[#e0d9ce] p-3.5">
-          <span className="mr-1 text-sm font-black">Add a question:</span>
-          {KIND_ORDER.map((kind) => (
-            <ButtonLink
-              key={kind}
-              href={`/tutor/exams/${data.id}/questions/new?kind=${kind}`}
-              variant="ghost"
-              size="sm"
-              className={cn("h-[38px] px-3.5 text-[13px] font-black", KIND_META[kind].bg, KIND_META[kind].fg, "hover:brightness-95 hover:text-current")}
-            >
-              {KIND_META[kind].label}
-            </ButtonLink>
-          ))}
-          <span aria-hidden className="mx-1 hidden h-[26px] w-px bg-[#e6e0d6] sm:block" />
-          <ButtonLink href={`/tutor/exams/${data.id}/import`} size="sm" className="h-[38px] px-4 text-[13px]">
-            <Sparkles className="size-4" aria-hidden /> Import a whole exam with AI
-          </ButtonLink>
+        <div className="mt-2 flex flex-col gap-3">
+          <h3 className="text-sm font-black">Add a question</h3>
+          <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+            {KIND_ORDER.map((kind) => (
+              <Link
+                key={kind}
+                href={`/tutor/exams/${data.id}/questions/new?kind=${kind}`}
+                className={cn(
+                  "group flex flex-col gap-2 rounded-[20px] p-3.5 no-underline transition hover:-translate-y-0.5 hover:shadow-sm hover:brightness-[0.97]",
+                  KIND_META[kind].bg,
+                  KIND_META[kind].fg,
+                  "hover:text-current",
+                )}
+              >
+                <span className="flex items-center justify-between">
+                  <span aria-hidden className="grid size-9 place-items-center rounded-xl bg-white/70 text-sm font-black">
+                    {KIND_META[kind].badge}
+                  </span>
+                  <Plus aria-hidden strokeWidth={3} className="size-4 opacity-60 transition group-hover:opacity-100" />
+                </span>
+                <span className="flex flex-col gap-0.5">
+                  <span className="text-sm font-black">{KIND_META[kind].label}</span>
+                  <span className="text-xs font-bold opacity-75">{KIND_HINT[kind]}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+          <Link
+            href={`/tutor/exams/${data.id}/import`}
+            className="group flex items-center gap-3 rounded-[20px] border border-line bg-white px-4 py-3 text-ink no-underline transition hover:bg-paper hover:text-ink"
+          >
+            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-secondary-soft text-secondary">
+              <Sparkles className="size-[18px]" />
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="text-sm font-black">Import many with AI</span>
+              <span className="text-xs font-bold text-muted">Convert your own questions, or have an AI write them from notes, then check each one.</span>
+            </span>
+            <ArrowRight aria-hidden strokeWidth={3} className="size-4 shrink-0 text-secondary transition group-hover:translate-x-0.5" />
+          </Link>
         </div>
       )}
     </Card>
