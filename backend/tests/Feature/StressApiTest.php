@@ -41,16 +41,16 @@ class StressApiTest extends TestCase
 
     public function test_the_exam_list_uses_a_fixed_number_of_queries(): void
     {
-        $this->assertLessThan(25, $this->queries('/api/v1/tutor/exams?per_page=100'));
+        $this->assertLessThan(25, $this->queries('/api/v1/tutor/exams?filter=all&per_page=100'));
     }
 
     public function test_the_exam_list_reports_the_whole_school(): void
     {
-        $response = $this->getJson('/api/v1/tutor/exams?per_page=100')->assertOk();
+        $response = $this->getJson('/api/v1/tutor/exams?filter=all&per_page=100')->assertOk();
 
         $this->assertGreaterThan(30, $response->json('meta.total'));
         $this->assertGreaterThan(300, $response->json('stats.toMark'));
-        $this->getJson('/api/v1/tutor/exams?per_page=10&page=2')->assertJsonCount(10, 'exams');
+        $this->getJson('/api/v1/tutor/exams?filter=all&per_page=10&page=2')->assertJsonCount(10, 'exams');
     }
 
     public function test_the_live_list_for_a_hundred_students_uses_a_fixed_number_of_queries(): void

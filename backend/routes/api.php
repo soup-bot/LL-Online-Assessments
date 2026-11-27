@@ -57,6 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/exams', [Tutor\ExamController::class, 'index']);
             Route::post('/exams', [Tutor\ExamController::class, 'store']);
             Route::patch('/exams/{exam}', [Tutor\ExamController::class, 'update'])->whereNumber('exam');
+            Route::delete('/exams/{exam}', [Tutor\ExamController::class, 'destroy'])->whereNumber('exam');
             Route::post('/exams/{exam}/publish', [Tutor\ExamController::class, 'publish'])->whereNumber('exam');
 
             Route::post('/exams/{exam}/questions', [Tutor\QuestionController::class, 'store'])->whereNumber('exam');

@@ -26,12 +26,14 @@ class ExamController extends Controller
      * My exams
      *
      * The teacher's exams with their stage and progress, plus the three counts for the tiles. Filter with
-     * `filter` (all, drafts, published, marking), search titles with `q`, sort with `sort` (attention, recent, name,
+     * `filter` (all, drafts, published, marking; leave it out and the list opens on `marking` when anything is
+     * waiting to be marked, otherwise `all`, and `filter` in the answer says which), search titles with `q`, sort with `sort` (attention, recent, name,
      * progress) and `dir` (asc, desc), and page with `page` and `per_page`. The counts always cover every exam.
      *
      * @response array{
      *   tutor: array{id: int, name: string, initials: string, email: string, role: string},
      *   stats: array{open: int, toMark: int, drafts: int},
+     *   filter: string,
      *   exams: list<array<string, mixed>>,
      *   meta: array{page: int, perPage: int, total: int}
      * }
@@ -42,9 +44,12 @@ class ExamController extends Controller
         [$page, $perPage] = $this->paging($request);
 
         $all = $this->present->examRows(Exam::ownedBy($teacher)->get());
+        $toMark = collect($all)->sum('toMark');
+        $requested = $request->query('filter');
+        $filter = in_array($requested, ['all', 'drafts', 'published', 'marking'], true) ? $requested : ($toMark > 0 ? 'marking' : 'all');
         $arranged = $this->present->arrange(
             $all,
-            (string) $request->query('filter', 'all'),
+            $filter,
             $request->query('q'),
             (string) $request->query('sort', 'attention'),
             $request->query('dir') === 'desc' ? 'desc' : 'asc',
@@ -56,9 +61,10 @@ class ExamController extends Controller
             'tutor' => $this->present->profile($teacher),
             'stats' => [
                 'open' => collect($all)->sum(fn ($e) => collect($e['classes'])->where('status', 'open')->count()),
-                'toMark' => collect($all)->sum('toMark'),
+                'toMark' => $toMark,
                 'drafts' => collect($all)->where('status', 'draft')->count(),
             ],
+            'filter' => $filter,
             'exams' => $arranged['rows'],
             'meta' => ['page' => $page, 'perPage' => $perPage, 'total' => $arranged['total']],
         ]);
@@ -100,6 +106,20 @@ class ExamController extends Controller
     public function update(UpdateExamRequest $request, int $exam): JsonResponse
     {
         $this->builder->update($this->access->draft($request->user(), $exam), $request->validated());
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Delete a draft
+     *
+     * Removes a draft exam with its questions. Only the owner can, and only while it is still a draft (409
+     * once published: students may have sat it).
+     */
+    public function destroy(Request $request, int $exam): JsonResponse
+    {
+        $user = $request->user();
+        $this->builder->deleteDraft($this->access->draft($user, $exam), $user);
 
         return response()->json(['ok' => true]);
     }

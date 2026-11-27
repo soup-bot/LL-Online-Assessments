@@ -74,6 +74,15 @@ class ExamBuilderService
         });
     }
 
+    /** Throws a draft away with its questions and class links. Only drafts can go: nobody has sat them. */
+    public function deleteDraft(Exam $exam, User $actor): void
+    {
+        DB::transaction(function () use ($exam, $actor) {
+            AuditLog::record($actor, 'exam.delete', $exam, ['title' => $exam->title, 'questions' => $exam->questions()->count()]);
+            $exam->delete();
+        });
+    }
+
     /** Locks the exam: from now on its questions, answer keys and settings never change. */
     public function publish(Exam $exam, User $actor): void
     {

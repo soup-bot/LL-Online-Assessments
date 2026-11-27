@@ -104,7 +104,7 @@ class TutorApiTest extends TestCase
 
     public function test_the_list_shows_each_exam_at_its_stage(): void
     {
-        $response = $this->as('aishath@ll.test')->getJson('/api/v1/tutor/exams?sort=name')->assertOk();
+        $response = $this->as('aishath@ll.test')->getJson('/api/v1/tutor/exams?filter=all&sort=name')->assertOk();
 
         $response->assertJsonPath('tutor.name', 'Aishath Rasheed')
             ->assertJsonPath('stats', ['open' => 1, 'toMark' => 1, 'drafts' => 1])
@@ -127,7 +127,7 @@ class TutorApiTest extends TestCase
     public function test_the_list_filters_searches_sorts_and_pages(): void
     {
         $this->as('aishath@ll.test');
-        $titles = fn (string $query) => collect($this->getJson("/api/v1/tutor/exams?{$query}")->assertOk()->json('exams'))->pluck('title')->all();
+        $titles = fn (string $query) => collect($this->getJson("/api/v1/tutor/exams?filter=all&{$query}")->assertOk()->json('exams'))->pluck('title')->all();
 
         $this->assertSame(['Unit 4 Test: Market Failure'], $titles('filter=drafts'));
         $this->assertSame(['Unit 3 Test: Demand and Supply'], $titles('filter=marking'));
@@ -137,10 +137,25 @@ class TutorApiTest extends TestCase
         $this->assertSame(['Unit 4 Test: Market Failure', 'Unit 3 Test: Demand and Supply', 'Unit 2 Test: Elasticity'], $titles('sort=name&dir=desc'));
         $this->assertSame('Unit 3 Test: Demand and Supply', $titles('')[0], 'the exam waiting to be marked comes first');
 
-        $this->getJson('/api/v1/tutor/exams?sort=name&per_page=2&page=2')
+        $this->getJson('/api/v1/tutor/exams?filter=all&sort=name&per_page=2&page=2')
             ->assertJsonPath('meta', ['page' => 2, 'perPage' => 2, 'total' => 3])
             ->assertJsonCount(1, 'exams');
         $this->getJson('/api/v1/tutor/exams?filter=drafts')->assertJsonPath('stats.toMark', 1);
+    }
+
+    public function test_without_a_filter_the_list_opens_on_what_needs_marking(): void
+    {
+        $this->as('aishath@ll.test');
+
+        $this->getJson('/api/v1/tutor/exams')
+            ->assertJsonPath('filter', 'marking')
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('exams.0.title', 'Unit 3 Test: Demand and Supply');
+        $this->getJson('/api/v1/tutor/exams?filter=all')->assertJsonPath('filter', 'all')->assertJsonPath('meta.total', 3);
+        $this->getJson('/api/v1/tutor/exams?filter=nonsense')->assertJsonPath('filter', 'marking');
+
+        // Nothing waiting (Ali has no exams at all): the default is everything.
+        $this->as('ali@ll.test')->getJson('/api/v1/tutor/exams')->assertJsonPath('filter', 'all')->assertJsonPath('meta.total', 0);
     }
 
     /* ---------------------------------------------------------- builder + settings */
@@ -403,6 +418,31 @@ class TutorApiTest extends TestCase
         $this->assertNotNull($unit4->published_at);
         $this->assertSame(1, AuditLog::where('action', 'exam.publish')->count());
         $this->postJson("/api/v1/tutor/exams/{$unit4->id}/publish")->assertStatus(409);
+    }
+
+    public function test_a_teacher_can_delete_their_draft_but_not_a_published_exam_or_anothers(): void
+    {
+        $unit4 = $this->exam('Unit 4');
+        $unit3 = $this->exam('Unit 3');
+        $questions = $unit4->questions()->count();
+        $this->assertGreaterThan(0, $questions);
+
+        $this->as('ali@ll.test')->deleteJson("/api/v1/tutor/exams/{$unit4->id}")->assertNotFound();
+        $this->assertDatabaseHas('exams', ['id' => $unit4->id]);
+
+        $this->as('aishath@ll.test')->deleteJson("/api/v1/tutor/exams/{$unit3->id}")->assertStatus(409);
+        $this->assertDatabaseHas('exams', ['id' => $unit3->id]);
+
+        $this->deleteJson("/api/v1/tutor/exams/{$unit4->id}")->assertOk();
+        $this->assertDatabaseMissing('exams', ['id' => $unit4->id]);
+        $this->assertSame(0, \App\Models\Question::where('exam_id', $unit4->id)->count());
+        $this->assertSame(1, AuditLog::where('action', 'exam.delete')->count());
+        $this->getJson("/api/v1/tutor/exams/{$unit4->id}")->assertNotFound();
+    }
+
+    public function test_an_admin_cannot_delete_an_exam(): void
+    {
+        $this->as('admin@ll.test')->deleteJson('/api/v1/tutor/exams/'.$this->exam('Unit 4')->id)->assertForbidden();
     }
 
     public function test_an_exam_with_no_questions_or_classes_cannot_be_published(): void
@@ -702,6 +742,74 @@ class TutorApiTest extends TestCase
             ->assertJsonPath('items.0.examTitle', 'Unit 3 Test: Demand and Supply')
             ->assertJsonPath('items.0.writtenCount', 2);
         $this->as('ali@ll.test')->getJson('/api/v1/tutor/to-mark')->assertJsonPath('meta.total', 0);
+    }
+
+    /** Hawwa and Ibrahim hand in Unit 3 (Batch A) and Ahmed hands in Unit 3 (Batch B): four submissions are now waiting. */
+    private function moreWaiting(): void
+    {
+        $handIn = fn (string $email, string $batch, string $when) => Attempt::factory()->create([
+            'exam_session_id' => $this->sessionOf('Unit 3', $batch)->id,
+            'student_id' => $this->user($email)->id,
+            'status' => 'submitted',
+            'submitted_at' => Carbon::parse($when),
+        ]);
+        $handIn('hawwa@ll.test', 'Batch A', '2026-03-04 09:30:00');
+        $handIn('ibrahim@ll.test', 'Batch A', '2026-03-04 09:10:00');
+        $handIn('ahmed@ll.test', 'Batch B', '2026-03-04 09:20:00');
+        Attempt::where('student_id', $this->user('mariyam@ll.test')->id)->update(['submitted_at' => '2026-03-04 09:00:00']);
+    }
+
+    private function user(string $email): User
+    {
+        return User::where('email', $email)->firstOrFail();
+    }
+
+    public function test_the_to_mark_list_is_searched_filtered_sorted_and_paged(): void
+    {
+        $this->moreWaiting();
+        $this->as('aishath@ll.test');
+        $names = fn (string $query) => collect($this->getJson("/api/v1/tutor/to-mark?{$query}")->assertOk()->json('items'))->pluck('student.name')->all();
+
+        $this->assertSame(['Mariyam Leena', 'Ibrahim Zayan', 'Ahmed Nashid', 'Hawwa Nadheema'], $names(''), 'oldest first by default');
+        $this->assertSame(['Hawwa Nadheema', 'Ahmed Nashid', 'Ibrahim Zayan', 'Mariyam Leena'], $names('sort=newest'));
+        $this->assertSame(['Ahmed Nashid', 'Hawwa Nadheema', 'Ibrahim Zayan', 'Mariyam Leena'], $names('sort=student'));
+        $this->assertSame(['Mariyam Leena', 'Ibrahim Zayan', 'Ahmed Nashid', 'Hawwa Nadheema'], $names('sort=sideways'), 'an unknown sort falls back to oldest');
+
+        $this->assertSame(['Ibrahim Zayan'], $names('q=ibra'));
+        $this->assertCount(4, $names('q=unit 3'), 'the exam title is searched too');
+        $this->assertSame([], $names('q=nobody'));
+
+        $batchB = $this->sessionOf('Unit 3', 'Batch B')->school_class_id;
+        $this->assertSame(['Ahmed Nashid'], $names("class={$batchB}"));
+        $this->assertSame(['Mariyam Leena', 'Ibrahim Zayan', 'Hawwa Nadheema'], $names('class='.$this->sessionOf('Unit 3', 'Batch A')->school_class_id));
+        $this->assertCount(4, $names('exam='.$this->exam('Unit 3')->id));
+        $this->assertSame([], $names('exam='.$this->exam('Unit 2')->id));
+        $this->assertSame([], $names("class={$batchB}&q=ibra"), 'a search that finds nobody in that class is empty, not an error');
+
+        $this->getJson('/api/v1/tutor/to-mark?per_page=3&page=2')->assertJsonPath('meta', ['page' => 2, 'perPage' => 3, 'total' => 4])->assertJsonCount(1, 'items');
+    }
+
+    public function test_the_to_mark_choices_always_cover_everything_waiting(): void
+    {
+        $this->moreWaiting();
+        $batchA = $this->sessionOf('Unit 3', 'Batch A')->school_class_id;
+
+        $response = $this->as('aishath@ll.test')->getJson("/api/v1/tutor/to-mark?class={$batchA}&q=ibra")->assertOk();
+
+        $response->assertJsonPath('meta.total', 1)->assertJsonPath('filters.total', 4)
+            ->assertJsonCount(1, 'filters.exams')->assertJsonCount(2, 'filters.classes')
+            ->assertJsonPath('filters.exams.0.title', 'Unit 3 Test: Demand and Supply')
+            ->assertJsonPath('filters.exams.0.count', 4);
+        $this->assertSame([3, 1], collect($response->json('filters.classes'))->pluck('count')->all());
+    }
+
+    public function test_the_to_mark_list_only_shows_the_teachers_own_submissions(): void
+    {
+        $this->moreWaiting();
+
+        $this->as('ali@ll.test')->getJson('/api/v1/tutor/to-mark?q=ibra')
+            ->assertJsonPath('meta.total', 0)->assertJsonPath('filters.total', 0)->assertJsonCount(0, 'filters.exams');
+        $this->as('aishath@ll.test')->getJson('/api/v1/tutor/to-mark?exam=999')->assertOk()->assertJsonPath('meta.total', 0);
     }
 
     /* --------------------------------------------------------------- classes */

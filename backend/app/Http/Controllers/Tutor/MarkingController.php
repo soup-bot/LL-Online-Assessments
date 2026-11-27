@@ -24,15 +24,31 @@ class MarkingController extends Controller
     /**
      * To mark
      *
-     * Submissions with written answers waiting for this teacher, oldest first. Page with `page` and `per_page`.
+     * Submissions with written answers waiting for this teacher. Search a student's name or an exam's title with
+     * `q`, narrow with `exam` and `class` (ids), sort with `sort` (oldest, newest, student), and page with `page` and
+     * `per_page`. `filters` lists the exams and classes that have something waiting, with counts, for the dropdowns.
      *
-     * @response array{items: list<array<string, mixed>>, meta: array{page: int, perPage: int, total: int}}
+     * @response array{
+     *   items: list<array<string, mixed>>,
+     *   filters: array{exams: list<array{id: int, title: string, count: int}>, classes: list<array{id: int, name: string, count: int}>, total: int},
+     *   meta: array{page: int, perPage: int, total: int}
+     * }
      */
     public function index(Request $request): JsonResponse
     {
         [$page, $perPage] = $this->paging($request);
 
-        return response()->json($this->present->toMark($request->user(), $page, $perPage));
+        $sort = in_array($request->query('sort'), ['oldest', 'newest', 'student'], true) ? $request->query('sort') : 'oldest';
+
+        return response()->json($this->present->toMark(
+            $request->user(),
+            $page,
+            $perPage,
+            $request->query('q'),
+            $request->integer('exam') ?: null,
+            $request->integer('class') ?: null,
+            $sort,
+        ));
     }
 
     /**

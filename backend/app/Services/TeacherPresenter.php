@@ -383,19 +383,44 @@ class TeacherPresenter
     /* -------------------------------------------------------------- marking */
 
     /**
-     * Submissions waiting for this teacher, oldest first.
+     * Submissions waiting for this teacher. Search the student's name or the exam's title, narrow to one exam or
+     * one class, sort (oldest, newest or by student), and page. `filters` lists the exams and classes that have
+     * something waiting, with how many, so the screen can offer only choices that lead somewhere.
      *
-     * @return array{items: list<array<string, mixed>>, meta: array<string, int>}
+     * @return array{items: list<array<string, mixed>>, filters: array<string, mixed>, meta: array<string, int>}
      */
-    public function toMark(User $teacher, int $page, int $perPage): array
+    public function toMark(User $teacher, int $page, int $perPage, ?string $search = null, ?int $examId = null, ?int $classId = null, string $sort = 'oldest'): array
     {
         $sessionIds = ExamSession::whereHas('exam', fn ($q) => $q->where('owner_id', $teacher->id))->pluck('id');
         $this->attempts->expireOverdue($sessionIds);
 
-        $query = Attempt::whereIn('exam_session_id', $sessionIds)->where('status', AttemptStatus::Submitted->value);
+        $waiting = fn () => Attempt::whereIn('exam_session_id', $sessionIds)->where('status', AttemptStatus::Submitted->value);
+
+        // The choices offered always cover everything waiting, so picking one never hides the others.
+        $examOptions = DB::table('attempts')->join('exam_sessions', 'exam_sessions.id', '=', 'attempts.exam_session_id')
+            ->join('exams', 'exams.id', '=', 'exam_sessions.exam_id')
+            ->whereIn('attempts.exam_session_id', $sessionIds)->where('attempts.status', AttemptStatus::Submitted->value)
+            ->selectRaw('exams.id as id, exams.title as title, count(*) as n')->groupBy('exams.id', 'exams.title')->orderBy('exams.title')->get();
+        $classOptions = DB::table('attempts')->join('exam_sessions', 'exam_sessions.id', '=', 'attempts.exam_session_id')
+            ->join('school_classes', 'school_classes.id', '=', 'exam_sessions.school_class_id')
+            ->whereIn('attempts.exam_session_id', $sessionIds)->where('attempts.status', AttemptStatus::Submitted->value)
+            ->selectRaw('school_classes.id as id, school_classes.name as name, count(*) as n')->groupBy('school_classes.id', 'school_classes.name')->orderBy('school_classes.name')->get();
+
+        $q = trim((string) $search);
+        $query = $waiting()
+            ->when($examId, fn ($x) => $x->whereHas('session', fn ($s) => $s->where('exam_id', $examId)))
+            ->when($classId, fn ($x) => $x->whereHas('session', fn ($s) => $s->where('school_class_id', $classId)))
+            ->when($q !== '', fn ($x) => $x->where(fn ($y) => $y
+                ->whereHas('student', fn ($s) => $s->where('name', 'like', "%{$q}%"))
+                ->orWhereHas('session.exam', fn ($e) => $e->where('title', 'like', "%{$q}%"))));
         $total = (clone $query)->count();
-        $items = $query->with(['student', 'session.exam', 'session.schoolClass'])->orderBy('submitted_at')->orderBy('id')
-            ->forPage($page, $perPage)->get();
+
+        match ($sort) {
+            'newest' => $query->orderByDesc('submitted_at')->orderByDesc('id'),
+            'student' => $query->orderBy(User::select('name')->whereColumn('users.id', 'attempts.student_id'))->orderBy('id'),
+            default => $query->orderBy('submitted_at')->orderBy('id'),
+        };
+        $items = $query->with(['student', 'session.exam', 'session.schoolClass'])->forPage($page, $perPage)->get();
         $written = Question::whereIn('exam_id', $items->pluck('session.exam_id'))->where('kind', QuestionKind::Written->value)
             ->selectRaw('exam_id, count(*) as n')->groupBy('exam_id')->pluck('n', 'exam_id');
 
@@ -408,6 +433,11 @@ class TeacherPresenter
                 'submittedAt' => StudentPresenter::iso($a->submitted_at ?? $a->started_at),
                 'writtenCount' => (int) ($written[$a->session->exam_id] ?? 0),
             ])->all(),
+            'filters' => [
+                'exams' => $examOptions->map(fn ($e) => ['id' => (int) $e->id, 'title' => $e->title, 'count' => (int) $e->n])->all(),
+                'classes' => $classOptions->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name, 'count' => (int) $c->n])->all(),
+                'total' => (int) $waiting()->count(),
+            ],
             'meta' => ['page' => $page, 'perPage' => $perPage, 'total' => $total],
         ];
     }
