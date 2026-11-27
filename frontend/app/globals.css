@@ -7,6 +7,15 @@
 @theme inline {
   --font-sans: var(--font-nunito), ui-sans-serif, system-ui, sans-serif;
 
+  /*
+   * One step lighter than Tailwind's defaults (bold 700, extrabold 800, black 900). Most text in the app asks for
+   * bold or heavier, which read as shouting. Nunito is a variable font, so any weight from 200 to 1000 renders.
+   */
+  --font-weight-semibold: 550;
+  --font-weight-bold: 600;
+  --font-weight-extrabold: 700;
+  --font-weight-black: 800;
+
   /* surfaces + text */
   --color-canvas: #fbfaf8;
   --color-paper: #f7f5f1;
@@ -86,7 +95,7 @@
     background: var(--color-canvas);
     color: var(--color-ink);
     font-family: var(--font-sans);
-    font-weight: 500;
+    font-weight: 400;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
