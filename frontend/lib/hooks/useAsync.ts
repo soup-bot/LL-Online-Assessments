@@ -15,8 +15,11 @@ interface AsyncState<T> {
  * Minimal data hook: loading, error and reload in one place, so every screen handles
  * them the same way. `refresh()` refetches quietly; `reload()` shows the skeleton again.
  */
-export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList) {
-  const [state, setState] = useState<AsyncState<T>>({ data: null, error: null, loading: true });
+export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList, options: { initial?: T | null } = {}) {
+  // `initial` is something already known (a copy from a moment ago): show it at once and refresh quietly,
+  // for the first load only. Later changes to `deps` load normally.
+  const initial = useRef(options.initial ?? null);
+  const [state, setState] = useState<AsyncState<T>>({ data: initial.current, error: null, loading: initial.current === null });
   const fnRef = useRef(fn);
   const runId = useRef(0);
 
@@ -36,8 +39,15 @@ export function useAsync<T>(fn: () => Promise<T>, deps: DependencyList) {
     }
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => void run(false), deps);
+  useEffect(() => {
+    // Cleared only once the first load settles: in development React runs this effect twice at start-up,
+    // and the second run must stay quiet too.
+    const quiet = initial.current !== null;
+    void run(quiet).then(() => {
+      initial.current = null;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
 
   useEffect(() => {
     const onDemo = () => void run(true);

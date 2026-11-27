@@ -66,6 +66,8 @@ export interface TutorHome {
   tutor: StaffProfile;
   /** Always counts every exam, whatever the filter. */
   stats: { open: number; toMark: number; drafts: number };
+  /** The filter that was applied. When none was asked for, the server picks one (to mark, if anything waits). */
+  filter: ExamFilter;
   exams: TutorExamRow[];
   meta: Meta;
 }
@@ -215,8 +217,22 @@ export interface ToMarkItem {
   writtenCount: number;
 }
 
+export type ToMarkSort = "oldest" | "newest" | "student";
+
+export interface ToMarkQuery extends ListQuery {
+  exam?: number;
+  class?: number;
+  sort?: ToMarkSort;
+}
+
 export interface ToMarkPage {
   items: ToMarkItem[];
+  /** The exams and classes with something waiting, with counts. Always covers everything, whatever is filtered. */
+  filters: {
+    exams: { id: number; title: string; count: number }[];
+    classes: { id: number; name: string; count: number }[];
+    total: number;
+  };
   meta: Meta;
 }
 

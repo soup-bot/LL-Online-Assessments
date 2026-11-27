@@ -1,44 +1,31 @@
 import { ApiError, UNAUTHORIZED_EVENT, type ApiErrorCode } from "@/lib/api-error";
 import { API_URL } from "@/lib/env";
 import { isSimulatingOffline } from "@/lib/mock/db";
-import type { User } from "@/lib/types";
+import { forgetSnapshots } from "@/lib/staff-snapshots";
 
-/** The signed-in user and their token, kept on this device. */
-export const TOKEN_KEY = "ll.token";
-export const USER_KEY = "ll.user";
-
-export function getToken(): string | null {
-  try {
-    return localStorage.getItem(TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export function getStoredUser(): User | null {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function storeAuth(token: string, user: User): void {
-  try {
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(USER_KEY, JSON.stringify(user));
-  } catch {
-    // storage blocked: the session lasts until the page is reloaded
-  }
-}
-
+/**
+ * Signing in is a cookie. The server sets an httpOnly session cookie that scripts (ours included) cannot read,
+ * and the browser sends it with every call. Nothing secret is kept in localStorage.
+ */
 export function clearAuth(): void {
+  forgetSnapshots();
+}
+
+/** The server's address without the /api/v1 part, where Laravel hands out the CSRF cookie. */
+const ORIGIN = API_URL.replace(/\/api\/v\d+$/, "");
+
+/** Laravel's anti-forgery token, which it puts in a cookie we may read (unlike the session cookie). */
+function xsrfToken(): string | null {
+  const match = typeof document === "undefined" ? null : document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/** Ask Laravel to set a fresh CSRF cookie. Needed before signing in, and again if the cookie is missing or stale. */
+export async function primeCsrf(): Promise<void> {
   try {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(USER_KEY);
+    await fetch(`${ORIGIN}/sanctum/csrf-cookie`, { credentials: "include", headers: { Accept: "application/json" } });
   } catch {
-    // ignore
+    throw new ApiError("network", OFFLINE_MESSAGE);
   }
 }
 
@@ -49,27 +36,44 @@ const BY_STATUS: Record<number, ApiErrorCode> = { 401: "unauthorized", 403: "for
 const OFFLINE_MESSAGE = "We can't reach the server. Check your connection and try again.";
 
 /**
- * One call to the API. Adds the token, and turns every failure into an ApiError with the
+ * One call to the API. Sends the session cookie (and the CSRF header on changes), and turns every failure into an ApiError with the
  * same codes the mock uses: a dropped connection is "network", a refused request carries the
  * server's own `code` and `message`. A 401 tells the app to sign out.
  */
-export async function request<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
+export async function request<T>(
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+  options: { silent?: boolean } = {},
+): Promise<T> {
   if (isSimulatingOffline()) throw new ApiError("network", OFFLINE_MESSAGE);
 
-  const token = getToken();
-  let response: Response;
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      method,
-      headers: {
-        Accept: "application/json",
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new ApiError("network", OFFLINE_MESSAGE);
+  const changes = method !== "GET";
+  if (changes && !xsrfToken()) await primeCsrf();
+
+  const send = async (): Promise<Response> => {
+    const xsrf = changes ? xsrfToken() : null;
+    try {
+      return await fetch(`${API_URL}${path}`, {
+        method,
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...(xsrf ? { "X-XSRF-TOKEN": xsrf } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+    } catch {
+      throw new ApiError("network", OFFLINE_MESSAGE);
+    }
+  };
+
+  let response = await send();
+  // 419: the CSRF token is stale (the session was renewed). Get a new one and try once more.
+  if (response.status === 419 && changes) {
+    await primeCsrf();
+    response = await send();
   }
 
   if (response.ok) {
@@ -93,6 +97,6 @@ export async function request<T>(method: "GET" | "POST" | "PUT" | "PATCH" | "DEL
   }
 
   const code = KNOWN.includes(payload.code as ApiErrorCode) ? (payload.code as ApiErrorCode) : (BY_STATUS[response.status] ?? "validation");
-  if (code === "unauthorized") window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  if (code === "unauthorized" && !options.silent) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   throw new ApiError(code, payload.message ?? "Something went wrong. Please try again.");
 }

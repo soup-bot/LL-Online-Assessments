@@ -15,26 +15,34 @@ import type {
   SyncInfo,
   ViolationOutcome,
 } from "@/lib/api-types";
-import { clearAuth, getStoredUser, request, storeAuth } from "@/lib/http";
+import { ApiError } from "@/lib/api-error";
+import { clearAuth, primeCsrf, request } from "@/lib/http";
 import type { User } from "@/lib/types";
 
 export const realAuth = {
   async login(email: string, password: string): Promise<User> {
-    const { token, user } = await request<{ token: string; user: User }>("POST", "/auth/login", { email, password });
-    storeAuth(token, user);
+    // A fresh anti-forgery cookie first: signing in starts a new session, so an old one must not be reused.
+    await primeCsrf();
+    const { user } = await request<{ user: User }>("POST", "/auth/login", { email, password });
     return user;
   },
 
+  /** Who the cookie says is signed in, or null. Asking while signed out is normal, so it never triggers the "session expired" flow. */
+  async me(): Promise<User | null> {
+    try {
+      return await request<User>("GET", "/auth/me", undefined, { silent: true });
+    } catch (e) {
+      if (e instanceof ApiError && (e.code === "unauthorized" || e.code === "network")) return null;
+      throw e;
+    }
+  },
+
   logout(): void {
-    // Tell the server to revoke the token, but never make the person wait for it.
-    void request("POST", "/auth/logout").catch(() => undefined);
+    // Ask the server to end the session, but never make the person wait for it.
+    void request("POST", "/auth/logout", undefined, { silent: true }).catch(() => undefined);
     clearAuth();
   },
 };
-
-export function currentStoredUser(): User | null {
-  return getStoredUser();
-}
 
 /** The API sends null for "none"; the screens expect the field to be missing. */
 const orUndefined = <T>(value: T | null): T | undefined => value ?? undefined;

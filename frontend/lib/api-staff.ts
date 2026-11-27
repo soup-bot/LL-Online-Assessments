@@ -24,6 +24,7 @@ import type {
   StudentSearchData,
   TeacherClass,
   ToMarkPage,
+  ToMarkQuery,
   TutorHome,
   UserInput,
   UserRow,
@@ -55,8 +56,8 @@ export const tutorApi = {
     return request("GET", "/tutor/to-mark/count");
   },
 
-  toMark(query: ListQuery = {}): Promise<ToMarkPage> {
-    return request("GET", `/tutor/to-mark${qs({ page: query.page, per_page: query.perPage })}`);
+  toMark(query: ToMarkQuery = {}): Promise<ToMarkPage> {
+    return request("GET", `/tutor/to-mark${qs({ ...paging(query), exam: query.exam, class: query.class, sort: query.sort })}`);
   },
 
   classes(): Promise<TeacherClass[]> {
@@ -65,6 +66,11 @@ export const tutorApi = {
 
   createExam(): Promise<{ examId: number }> {
     return request("POST", "/tutor/exams");
+  },
+
+  /** Throws a draft away. Published exams can't be deleted. */
+  async deleteExam(examId: number): Promise<void> {
+    await request("DELETE", `/tutor/exams/${examId}`);
   },
 
   builder(examId: number): Promise<ExamBuilder> {

@@ -8,8 +8,8 @@ import type { QuestionKind } from "@/lib/types";
  */
 
 export const IMPORT_PROMPT = [
-  "You are helping a teacher turn exam material into a structured online exam.",
-  "Use ONLY the material I give you below. Keep my wording. Do not invent questions.",
+  "This is the format for an exam on my teaching platform. Do whatever I ask below (turn my existing questions into",
+  "this format, write new questions from my notes, change a few, or anything else), and give me the result in this format.",
   "",
   "Reply with JSON only, no other text, in exactly this shape:",
   "{",
@@ -27,13 +27,16 @@ export const IMPORT_PROMPT = [
   "  ]",
   "}",
   "",
-  "Rules:",
+  "Format rules:",
   "- type is one of: mcq, true_false, fill_blank, written.",
   "- mcq has exactly 4 options; answer is A, B, C or D.",
-  "- If my material has no answer key for a question, use null",
-  "  (or an empty list) so I can fill it in. Never guess.",
+  "- fill_blank has exactly one gap, written as ____ (four underscores), and lists every accepted answer.",
+  "- written lists the marking points a marker should look for.",
+  "- points is a whole number of 1 or more.",
+  "- Include the answer for every question you write. If I give you a question without an answer, use null",
+  "  (or an empty list) instead of guessing.",
   "",
-  "Here is my material:",
+  "What I want you to do:",
 ].join("\n");
 
 export const IMPORT_SAMPLE: ImportedExam = {
@@ -86,7 +89,25 @@ function extractJson(text: string): unknown {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("no json");
-  return JSON.parse(text.slice(start, end + 1));
+  const json = text.slice(start, end + 1);
+  try {
+    return JSON.parse(json);
+  } catch {
+    // Copying from a chat window often adds debris: line-end backslashes, "&#x20;" for spaces, "\_" for "_".
+    return JSON.parse(repairPaste(json));
+  }
+}
+
+/** Undo what copying from a chat page does to JSON, without touching text that was already fine. */
+function repairPaste(text: string): string {
+  const named: Record<string, string> = { nbsp: " ", quot: '"', amp: "&", lt: "<", gt: ">", apos: "'" };
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/&(nbsp|quot|amp|lt|gt|apos);/g, (_, n: string) => named[n])
+    .replace(/ /g, " ")
+    // a backslash that isn't a real JSON escape (a line-end "\" or "\_") is just dropped
+    .replace(/\\([\s\S])/g, (m, c: string) => (/["\\/bfnrtu]/.test(c) ? m : c));
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");

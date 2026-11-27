@@ -21,10 +21,10 @@ import type {
   SyncInfo,
   ViolationOutcome,
 } from "@/lib/api-types";
-import { currentStoredUser, realAuth, realStudent } from "@/lib/api-real";
+import { realAuth, realStudent } from "@/lib/api-real";
 import { GLOBAL_RULES, MAX_VIOLATIONS, SAVE_GRACE_MS } from "@/lib/config";
 import { USE_MOCK } from "@/lib/env";
-import { clearAuth } from "@/lib/http";
+import { request } from "@/lib/http";
 import { gradeFor, hasAnswer, markObjective, percentOf } from "@/lib/grading";
 import {
   isSimulatingOffline,
@@ -295,8 +295,9 @@ function correctAnswerText(q: Question): string | null {
 
 /* --------------------------------------------------------------------- API */
 
-export function getCurrentUser(): User | null {
-  if (!USE_MOCK) return currentStoredUser();
+/** Who is signed in when the app opens: the demo data's choice, or whoever the session cookie belongs to (asked of the server). */
+export async function restoreUser(): Promise<User | null> {
+  if (!USE_MOCK) return realAuth.me();
   const id = sessionUserId();
   return id == null ? null : (readDb().users.find((u) => u.id === id) ?? null);
 }
@@ -760,9 +761,9 @@ export const api = USE_MOCK
       student: realStudent,
       dev: {
         ...mockApi.dev,
-        /** Forget the token so the next call is refused, like an expired sign-in. */
+        /** End the session on the server but keep the screen as it is, so the next call is refused like an expired sign-in. */
         expireSession(): void {
-          clearAuth();
+          void request("POST", "/auth/logout", undefined, { silent: true }).catch(() => undefined);
         },
       },
     };
