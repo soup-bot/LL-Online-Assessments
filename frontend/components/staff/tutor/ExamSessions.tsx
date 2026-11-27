@@ -14,7 +14,7 @@ import { cn, formatDate, formatTime, plural } from "@/lib/utils";
 import { BackLink, ConfirmModal, FilterPill, FilterTabs, Pagination, ProgressRing, Select, StatusChip, inputClass } from "@/components/staff/bits";
 import { StaffMain } from "@/components/staff/StaffShell";
 import { useToast } from "@/components/staff/Toast";
-import { Button, ButtonLink, Card, Chip, EmptyState, ErrorState, GradeTile, Notice, Skeleton } from "@/components/ui";
+import { Button, ButtonLink, Card, Chip, EmptyState, ErrorState, GradeTile, Notice, Skeleton, TileWatermark } from "@/components/ui";
 import type { ChipTone } from "@/components/ui/Chip";
 
 export function ExamSessionsScreen() {
@@ -83,10 +83,10 @@ function SessionsContent({ data, onChange }: { data: ExamSessionsData; onChange:
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Total label="Batches open" value={`${totals.open} of ${data.classes.length}`} tone="bg-mint text-mint-deep" />
-            <Total label="Sitting now" value={totals.sitting} tone="bg-secondary-soft text-secondary-dark" />
-            <Total label="To mark" value={totals.toMark} tone="bg-amber text-amber-ink" />
-            <Total label="Handed in" value={`${totals.handedIn} of ${totals.students}`} tone="bg-chip text-ink" />
+            <Total label="Batches open" value={`${totals.open} of ${data.classes.length}`} tone="bg-mint text-mint-deep" src="/clock-green.png" />
+            <Total label="Sitting now" value={totals.sitting} tone="bg-secondary-soft text-secondary-dark" src="/question-blue.png" />
+            <Total label="To mark" value={totals.toMark} tone="bg-amber text-amber-ink" src="/pencil-amber.png" />
+            <Total label="Handed in" value={`${totals.handedIn} of ${totals.students}`} tone="bg-brand-tint text-brand-dark" src="/tick-green.png" />
           </div>
 
           <div className="flex flex-col items-stretch gap-5 md:flex-row md:items-start">
@@ -99,11 +99,13 @@ function SessionsContent({ data, onChange }: { data: ExamSessionsData; onChange:
   );
 }
 
-function Total({ label, value, tone }: { label: string; value: number | string; tone: string }) {
+/** A number with a label, and a faint drawing in the corner like the tiles on the exams page. */
+function Total({ label, value, tone, src }: { label: string; value: number | string; tone: string; src: string }) {
   return (
-    <div className={cn("flex flex-col gap-0.5 rounded-[22px] px-4 py-3.5", tone)}>
-      <span className="text-2xl font-black leading-tight">{value}</span>
-      <span className="text-[13px] font-extrabold opacity-80">{label}</span>
+    <div className={cn("bg-fabric relative flex flex-col gap-0.5 overflow-hidden rounded-[22px] px-4 py-3.5", tone)}>
+      <TileWatermark src={src} />
+      <span className="relative text-2xl font-black leading-tight">{value}</span>
+      <span className="relative text-[13px] font-extrabold opacity-80">{label}</span>
     </div>
   );
 }
