@@ -7,9 +7,10 @@ import { api } from "@/lib/api";
 import type { ResultListItem, StudentResults, SubjectResults } from "@/lib/api-types";
 import { GRADE_BANDS, type Grade } from "@/lib/grading";
 import { useAsync } from "@/lib/hooks/useAsync";
-import { cn, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { AccountButton, StudentShell } from "@/components/student/StudentShell";
 import { Card, Chip, EmptyState, ErrorState, GradeTile, ProgressBar, Skeleton, TileWatermark } from "@/components/ui";
+import { FilterPill, FilterTabs } from "@/components/ui/FilterTabs";
 
 type Released = Extract<ResultListItem, { kind: "released" }>;
 type Pending = Extract<ResultListItem, { kind: "pending" }>;
@@ -54,22 +55,15 @@ function ListContent({ data }: { data: StudentResults }) {
       ) : (
         <>
           {data.subjects.length > 1 && (
-            <nav aria-label="Subjects" className="-mt-1 hidden flex-wrap gap-2 md:flex">
-              {[{ code: "all", label: "All subjects" }, ...data.subjects.map((s) => ({ code: s.subjectCode, label: s.subjectShort }))].map((s) => (
-                <button
-                  key={s.code}
-                  type="button"
-                  onClick={() => setFilter(s.code)}
-                  aria-pressed={filter === s.code}
-                  className={cn(
-                    "h-[42px] rounded-full px-[18px] text-sm font-extrabold transition",
-                    filter === s.code ? "bg-ink text-white" : "border-2 border-line-input bg-white text-ink hover:bg-paper",
-                  )}
-                >
-                  {s.label}
-                </button>
-              ))}
-            </nav>
+            <div className="-mt-1 hidden md:block">
+              <FilterTabs label="Subjects">
+                {[{ code: "all", label: "All subjects" }, ...data.subjects.map((s) => ({ code: s.subjectCode, label: s.subjectShort }))].map((s) => (
+                  <FilterPill key={s.code} active={filter === s.code} onClick={() => setFilter(s.code)}>
+                    {s.label}
+                  </FilterPill>
+                ))}
+              </FilterTabs>
+            </div>
           )}
 
           <Overview data={data} subjects={subjects} />
@@ -102,9 +96,9 @@ function Overview({ data, subjects }: { data: StudentResults; subjects: SubjectR
     .filter((x): x is { subject: SubjectResults; latest: Released } => !!x.latest);
 
   return (
-    <div className="flex flex-col gap-4 md:flex-row md:items-stretch md:gap-5">
-      {/* tiles: desktop only */}
-      <div className="hidden max-w-[360px] flex-1 basis-[300px] grid-cols-2 gap-3 md:grid">
+    <div className="flex flex-col gap-4 md:gap-5">
+      {/* tiles: desktop only. A row of their own, so they keep their size however many subjects there are. */}
+      <div className="hidden grid-cols-3 gap-3 md:grid">
         <div className="bg-fabric relative flex flex-col gap-0.5 overflow-hidden rounded-3xl bg-brand-tint p-[18px]">
           <TileWatermark src="/star-green.png" />
           <span className="relative text-3xl font-black text-brand-dark">{data.releasedCount}</span>
@@ -116,7 +110,7 @@ function Overview({ data, subjects }: { data: StudentResults; subjects: SubjectR
           <span className="relative text-sm font-extrabold text-[#7a4d00]">Being marked</span>
         </div>
         {data.latest && (
-          <Card className="col-span-2 flex items-center gap-3.5 rounded-3xl p-[18px]">
+          <Card className="flex items-center gap-3.5 rounded-3xl p-[18px]">
             <GradeTile grade={data.latest.grade} size="md" />
             <div className="flex flex-col gap-0.5">
               <span className="text-[13px] font-extrabold text-muted">Latest grade · {data.latest.subjectShort}</span>
@@ -129,12 +123,13 @@ function Overview({ data, subjects }: { data: StudentResults; subjects: SubjectR
       </div>
 
       {progress.length > 0 && (
-        <Card className="flex flex-1 basis-[480px] flex-col gap-3 rounded-3xl p-[18px] md:gap-4 md:rounded-[28px] md:p-6">
+        <Card className="flex flex-col gap-3 rounded-3xl p-[18px] md:gap-4 md:rounded-[28px] md:p-6">
           <div className="flex flex-col gap-0.5">
             <h2 className="text-[17px] font-black md:text-[19px]">How you&apos;re doing</h2>
             <p className="hidden text-sm font-bold text-muted md:block">Your latest grade in each subject.</p>
           </div>
-          <ul className="flex flex-col gap-3 md:gap-3.5">
+          {/* two columns on desktop, so a long list of subjects makes the card wider, not taller and taller */}
+          <ul className="flex flex-col gap-3 md:grid md:grid-cols-2 md:gap-x-10 md:gap-y-4">
             {progress.map(({ subject, latest }) => (
               <li key={subject.subjectCode} className="flex items-center gap-3.5">
                 <GradeTile grade={latest.grade} size="sm" tone="tint" className="hidden md:grid" />

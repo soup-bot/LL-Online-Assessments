@@ -3,6 +3,7 @@
 import { useId, useState, type ReactNode, type SelectHTMLAttributes } from "react";
 import Link from "next/link";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { PingDot } from "@/components/ui/PingDot";
 import { cn } from "@/lib/utils";
 import { Button, Chip, Modal } from "@/components/ui";
 import type { ChipTone } from "@/components/ui/Chip";
@@ -67,31 +68,44 @@ export function Select({ className, children, style, ...rest }: SelectHTMLAttrib
   );
 }
 
-/** Filter pill: dark when selected, outlined otherwise. */
-export function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+export { FilterPill, FilterTabs } from "@/components/ui/FilterTabs";
+
+/** A progress ring with a short label inside ("6/8"). `value` is 0 to 100; `label` is read aloud in full. */
+export function ProgressRing({ value, text, label, tone = "stroke-secondary", size = 44 }: { value: number; text: string; label: string; tone?: string; size?: number }) {
+  const stroke = 4;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, value));
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "h-10 rounded-full px-4 text-sm font-extrabold transition",
-        active ? "bg-ink text-white" : "border-2 border-line-input bg-white text-ink hover:bg-paper",
-      )}
-    >
-      {children}
-    </button>
+    <span role="img" aria-label={label} title={label} className="relative inline-grid shrink-0 place-items-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90" aria-hidden>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-chip" />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          strokeWidth={stroke}
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - pct / 100)}
+          className={cn("transition-[stroke-dashoffset] duration-500", tone)}
+        />
+      </svg>
+      <span className="absolute text-[11px] font-black tabular-nums text-ink-2">{text}</span>
+    </span>
   );
 }
 
 /** Label above a thin progress bar, as used on exam cards. */
-export function MiniProgress({ label, value, tone = "bg-secondary" }: { label: string; value: number | null; tone?: string }) {
+export function MiniProgress({ label, value, tone = "bg-secondary", compact }: { label: string; value: number | null; tone?: string; compact?: boolean }) {
+  const bar = compact ? "h-1.5" : "h-2";
   return (
-    <div className="flex min-w-0 flex-col gap-1.5">
-      <span className="text-[13px] font-extrabold text-muted">{label}</span>
-      <div className="h-2 rounded-full bg-chip">
+    <div className={cn("flex min-w-0 flex-col", compact ? "gap-1" : "gap-1.5")}>
+      <span className={cn("text-muted", compact ? "text-xs font-bold" : "text-[13px] font-extrabold")}>{label}</span>
+      <div className={cn("rounded-full bg-chip", bar)}>
         {value != null && value > 0 && (
-          <div className={cn("h-2 rounded-full transition-[width] duration-500", tone)} style={{ width: `${Math.min(100, value)}%` }} />
+          <div className={cn("rounded-full transition-[width] duration-500", bar, tone)} style={{ width: `${Math.min(100, value)}%` }} />
         )}
       </div>
     </div>
@@ -100,8 +114,8 @@ export function MiniProgress({ label, value, tone = "bg-secondary" }: { label: s
 
 export function StatusChip({ tone, dot, children }: { tone: ChipTone; dot?: string; children: ReactNode }) {
   return (
-    <Chip tone={tone} size="md" className="whitespace-nowrap">
-      {dot && <span aria-hidden className={cn("size-[7px] rounded-full", dot)} />}
+    <Chip tone={tone} size="md" className="whitespace-nowrap font-bold!">
+      {dot && <PingDot color={dot} />}
       {children}
     </Chip>
   );

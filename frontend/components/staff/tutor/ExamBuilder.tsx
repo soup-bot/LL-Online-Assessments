@@ -3,11 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Check, Lock, Pencil, Sparkles } from "lucide-react";
+import { Check, Lock, Pencil, Sparkles, Trash2 } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { tutorApi } from "@/lib/api-staff";
 import type { ExamBuilder as ExamBuilderData } from "@/lib/staff-types";
 import { useAsync } from "@/lib/hooks/useAsync";
+import { forgetBuilder, recallBuilder, rememberBuilder } from "@/lib/staff-snapshots";
 import { KIND_META, KIND_ORDER } from "@/lib/question-kinds";
 import { cn, plural } from "@/lib/utils";
 import { BackLink, ConfirmModal, Field, Select, StatusChip, inputClass, textareaClass } from "@/components/staff/bits";
@@ -18,7 +19,11 @@ import { Button, ButtonLink, Card, ErrorState, KindBadge, Notice, ProgressBar, S
 export function ExamBuilderScreen() {
   const params = useParams<{ examId: string }>();
   const examId = Number(params.examId);
-  const { data, error, loading, reload, refresh } = useAsync(() => tutorApi.builder(examId), [examId]);
+  // The copy from the last visit shows at once (coming back from the question editor) while a fresh one loads quietly.
+  const { data, error, loading, reload, refresh } = useAsync(() => tutorApi.builder(examId), [examId], { initial: recallBuilder(examId) });
+  useEffect(() => {
+    if (data) rememberBuilder(data);
+  }, [data]);
 
   return (
     <>
@@ -36,6 +41,7 @@ function BuilderContent({ data, onChange }: { data: ExamBuilderData; onChange: (
   const router = useRouter();
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const locked = !data.canEdit;
 
   async function publish() {
@@ -50,11 +56,26 @@ function BuilderContent({ data, onChange }: { data: ExamBuilderData; onChange: (
     }
   }
 
+  async function remove() {
+    try {
+      await tutorApi.deleteExam(data.id);
+      forgetBuilder(data.id);
+      toast("Draft deleted");
+      router.push("/tutor");
+    } catch (e) {
+      setDeleting(false);
+      toast(toApiError(e).message, "error");
+      onChange();
+    }
+  }
+
   return (
     <>
       <Card className="flex flex-wrap items-center justify-between gap-5 px-[26px] py-6">
         <div className="relative flex min-w-0 flex-col gap-1.5">
-          <StatusChip tone={data.status === "draft" ? "neutral" : "brand"}>{data.status === "draft" ? "Draft" : "Published"}</StatusChip>
+          <span className="self-start">
+            <StatusChip tone={data.status === "draft" ? "neutral" : "brand"}>{data.status === "draft" ? "Draft" : "Published"}</StatusChip>
+          </span>
           <h1 className="text-[26px] font-black leading-tight md:text-3xl">{data.title.trim() || "Untitled exam"}</h1>
         </div>
 
@@ -76,6 +97,11 @@ function BuilderContent({ data, onChange }: { data: ExamBuilderData; onChange: (
             <Button size="lg" disabled={!data.canEdit || data.publishBlocker != null} onClick={() => setConfirming(true)}>
               Publish exam
             </Button>
+            {data.canEdit && (
+              <Button variant="ghost" size="md" className="text-rose-ink hover:bg-rose hover:text-rose-ink" onClick={() => setDeleting(true)}>
+                <Trash2 className="size-[18px]" aria-hidden /> Delete draft
+              </Button>
+            )}
           </div>
         ) : (
           <ButtonLink href={`/tutor/exams/${data.id}/sessions`} variant="dark">
@@ -99,6 +125,12 @@ function BuilderContent({ data, onChange }: { data: ExamBuilderData; onChange: (
         <p>
           Once it is published, the {plural(data.questions.length, "question")} and answer keys are locked and can&apos;t be edited. You
           can then open the exam for each class.
+        </p>
+      </ConfirmModal>
+      <ConfirmModal open={deleting} onClose={() => setDeleting(false)} title="Delete this draft?" confirmLabel="Delete draft" tone="dark" onConfirm={remove}>
+        <p>
+          &quot;{data.title.trim() || "Untitled exam"}&quot; and its {plural(data.questions.length, "question")} will be removed for good. This can&apos;t be
+          undone.
         </p>
       </ConfirmModal>
     </>

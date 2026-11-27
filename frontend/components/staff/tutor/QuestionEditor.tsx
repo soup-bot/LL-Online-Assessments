@@ -2,11 +2,12 @@
 
 import { useState, type ReactNode } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Plus, Trash2, X } from "lucide-react";
+import { Check, Plus, Trash2, X } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { tutorApi } from "@/lib/api-staff";
 import type { EditorQuestion, QuestionDraft } from "@/lib/staff-types";
 import { useAsync } from "@/lib/hooks/useAsync";
+import { newQuestionFrom } from "@/lib/staff-snapshots";
 import { KIND_META, KIND_ORDER } from "@/lib/question-kinds";
 import type { QuestionKind } from "@/lib/types";
 import { cn, plural } from "@/lib/utils";
@@ -25,7 +26,10 @@ export function QuestionEditorScreen() {
   const questionId = params.questionId === "new" ? null : Number(params.questionId);
   const kindParam = search.get("kind");
   const kind = KIND_ORDER.includes(kindParam as QuestionKind) ? (kindParam as QuestionKind) : "mcq";
-  const { data, error, loading, reload } = useAsync(() => tutorApi.question(examId, questionId, kind), [examId, questionId, kind]);
+  // A new question starts from a blank form built here when the exam is already known, so it opens instantly.
+  const { data, error, loading, reload } = useAsync(() => tutorApi.question(examId, questionId, kind), [examId, questionId, kind], {
+    initial: questionId == null ? newQuestionFrom(examId, kind) : null,
+  });
 
   return (
     <>
@@ -182,7 +186,6 @@ function EditorContent({ examId, data }: { examId: number; data: EditorQuestion 
               </div>
             </div>
           )}
-          {!locked && <span className="text-[13px] font-bold text-muted">Changing an approved question removes its approval.</span>}
         </Card>
 
         <aside className="flex max-w-none flex-[1_1_320px] flex-col gap-3 lg:max-w-[400px]">
@@ -234,34 +237,48 @@ function Section({ title, aside, children }: { title: string; aside?: string; ch
 
 function McqKey({ draft, edit }: KeyProps) {
   return (
-    <Section title="Answer options" aside="Tick the correct one">
-      {OPTION_KEYS.map((key, i) => {
-        const correct = draft.correct === key;
-        return (
-          <div key={key} className="flex items-center gap-2.5">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={correct}
-              aria-label={`Option ${key} is the correct answer`}
-              onClick={() => edit({ correct: key })}
-              className={cn(
-                "grid size-[34px] shrink-0 place-items-center rounded-full text-[13px] font-black transition",
-                correct ? "bg-mint-ink text-white" : "bg-pink text-pink-ink hover:brightness-95",
-              )}
-            >
-              {key}
-            </button>
-            <input
-              className={cn(inputClass, "h-11 rounded-[14px] text-sm", correct && "border-mint-ink")}
-              aria-label={`Option ${key}`}
-              placeholder={`Option ${key}`}
-              value={draft.options[i] ?? ""}
-              onChange={(e) => edit({ options: draft.options.map((o, j) => (j === i ? e.target.value : o)) })}
-            />
-          </div>
-        );
-      })}
+    <Section title="Answer options" aside="Write the options, then mark the correct one">
+      <div role="radiogroup" aria-label="Correct answer" className="flex flex-col gap-2.5">
+        {OPTION_KEYS.map((key, i) => {
+          const correct = draft.correct === key;
+          return (
+            <div key={key} className="flex items-center gap-2.5">
+              <span
+                aria-hidden
+                className={cn(
+                  "grid size-[34px] shrink-0 place-items-center rounded-full text-[13px] font-black",
+                  correct ? "bg-mint-ink text-white" : "bg-pink text-pink-ink",
+                )}
+              >
+                {key}
+              </span>
+              <input
+                className={cn(inputClass, "h-11 min-w-0 flex-1 rounded-[14px] text-sm", correct && "border-mint-ink")}
+                aria-label={`Option ${key}`}
+                placeholder={`Option ${key}`}
+                value={draft.options[i] ?? ""}
+                onChange={(e) => edit({ options: draft.options.map((o, j) => (j === i ? e.target.value : o)) })}
+              />
+              <button
+                type="button"
+                role="radio"
+                aria-checked={correct}
+                aria-label={`Mark option ${key} as the correct answer`}
+                onClick={() => edit({ correct: key })}
+                className={cn(
+                  "flex h-11 shrink-0 items-center gap-1.5 rounded-full border-2 px-3.5 text-[13px] font-black transition",
+                  correct
+                    ? "border-mint-ink bg-mint text-mint-deep"
+                    : "border-line-input bg-white text-muted hover:border-mint-ink hover:text-mint-deep",
+                )}
+              >
+                {correct && <Check className="size-4" strokeWidth={3} aria-hidden />}
+                {correct ? "Correct" : "Mark correct"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </Section>
   );
 }

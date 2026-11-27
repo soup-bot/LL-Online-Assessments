@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, ChevronsUpDown, Hourglass, Pencil, Plus, Radio, Search, Send, Sparkles, Trophy, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, ChevronsUpDown, ChartColumn, Hourglass, Pencil, Plus, Radio, Search, Send, Settings2, Sparkles, Trash2, Trophy, type LucideIcon } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { tutorApi } from "@/lib/api-staff";
 import type { ExamFilter, ExamSort, ExamStage, TutorExamRow } from "@/lib/staff-types";
 import { useAsync } from "@/lib/hooks/useAsync";
-import { useDebounced } from "@/lib/hooks/useDebounced";
+import { forgetBuilder } from "@/lib/staff-snapshots";
+import { useClampPage, useQueryState, useSearchText } from "@/lib/hooks/useQueryState";
 import { cn, plural } from "@/lib/utils";
-import { FilterPill, MiniProgress, PageHeader, Pagination, Select, StatusChip, TiltTile, inputClass } from "@/components/staff/bits";
+import { ConfirmModal, FilterPill, FilterTabs, MiniProgress, PageHeader, Pagination, Select, StatusChip, TiltTile, inputClass } from "@/components/staff/bits";
 import { StaffMain } from "@/components/staff/StaffShell";
 import { useToast } from "@/components/staff/Toast";
 import { Button, ButtonLink, Card, EmptyState, ErrorState, Skeleton, TileWatermark } from "@/components/ui";
@@ -30,7 +31,7 @@ const STAGE: Record<ExamStage, { Icon: LucideIcon; tile: string; chip: { tone: C
   ready: { Icon: Send, tile: "bg-secondary-soft text-secondary", chip: { tone: "lilac", label: "Published" } },
   live: { Icon: Radio, tile: "bg-mint text-mint-ink", chip: { tone: "mint", label: "Open now", dot: "bg-mint-ink" } },
   marking: { Icon: Hourglass, tile: "bg-amber text-amber-ink", chip: { tone: "amber", label: "Needs marking" } },
-  released: { Icon: Trophy, tile: "bg-secondary-soft text-secondary", chip: { tone: "mint", label: "Results released" } },
+  released: { Icon: Trophy, tile: "bg-sky text-sky-deep", chip: { tone: "sky", label: "Results released" } },
 };
 
 /**
@@ -41,30 +42,24 @@ export function ExamsListScreen() {
   const router = useRouter();
   const toast = useToast();
 
-  // null until the teacher picks one: then the list opens on what needs them most (exams waiting to be marked).
-  const [chosen, setChosen] = useState<ExamFilter | null>(null);
-  const [text, setText] = useState("");
-  const q = useDebounced(text.trim(), 300);
-  const [sort, setSort] = useState<SortState>({ key: "attention", dir: "asc" });
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  // Everything the list shows lives in the address (?filter=drafts&q=unit&sort=name&page=2), so a refresh keeps
+  // your place and a link opens the same view. No filter in the address means the server chooses: the exams
+  // waiting to be marked if there are any, else all.
+  const [p, update] = useQueryState({ filter: "", q: "", sort: "attention", dir: "asc", page: 1, size: 10 });
+  const [text, setText] = useSearchText(p.q, (q) => update({ q }, "replace"));
+  const sort: SortState = { key: p.sort as ExamSort, dir: p.dir === "desc" ? "desc" : "asc" };
   const [starting, setStarting] = useState<"new" | "import" | null>(null);
 
-  const filter = chosen ?? "all";
-  const { data, error, loading, reload } = useAsync(
-    () => tutorApi.home({ filter, q, sort: sort.key, dir: sort.dir, page: page + 1, perPage: pageSize }),
-    [filter, q, sort.key, sort.dir, page, pageSize],
+  const { data, error, loading, reload, refresh } = useAsync(
+    () => tutorApi.home({ filter: (p.filter || undefined) as ExamFilter | undefined, q: p.q, sort: sort.key, dir: sort.dir, page: p.page, perPage: p.size }),
+    [p.filter, p.q, p.sort, p.dir, p.page, p.size],
   );
+  useClampPage(data?.meta.total, p.page, p.size, () => update({ page: 1 }, "replace"));
+  // The pill shown as pressed is what the server actually applied, so there is one request and no switch afterwards.
+  const filter = (p.filter as ExamFilter) || data?.filter || null;
+  const q = p.q;
 
-  // First time in: if anything is waiting to be marked, start on that filter.
-  useEffect(() => {
-    if (chosen === null && data && data.stats.toMark > 0) setChosen("marking");
-  }, [chosen, data]);
-
-  const pick = (f: ExamFilter) => {
-    setChosen(f);
-    setPage(0);
-  };
+  const pick = (f: ExamFilter) => update({ filter: f });
 
   async function start(mode: "new" | "import") {
     setStarting(mode);
@@ -111,13 +106,13 @@ export function ExamsListScreen() {
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2.5">
-        <div className="flex flex-wrap gap-2" role="group" aria-label="Filter exams">
+        <FilterTabs label="Filter exams">
           {FILTERS.map((f) => (
             <FilterPill key={f.id} active={filter === f.id} onClick={() => pick(f.id)}>
               {f.label}
             </FilterPill>
           ))}
-        </div>
+        </FilterTabs>
         <div className="ml-auto flex w-full flex-wrap items-center gap-2.5 md:w-auto md:flex-nowrap">
           <label className="sr-only" htmlFor="exam-search">Search exams</label>
           <div className="relative min-w-0 flex-1 md:w-64 md:flex-none">
@@ -127,15 +122,12 @@ export function ExamsListScreen() {
               type="search"
               value={text}
               placeholder="Search exams"
-              onChange={(e) => {
-                setText(e.target.value);
-                setPage(0);
-              }}
+              onChange={(e) => setText(e.target.value)}
               className={cn(inputClass, "h-10 rounded-full pl-10 pr-4 text-sm")}
             />
           </div>
           <label className="sr-only" htmlFor="exam-sort">Sort exams</label>
-          <Select id="exam-sort" value={sort.key} onChange={(e) => { setSort({ key: e.target.value as ExamSort, dir: "asc" }); setPage(0); }} className="h-10 w-auto! rounded-full text-sm md:hidden">
+          <Select id="exam-sort" value={sort.key} onChange={(e) => update({ sort: e.target.value, dir: "asc" })} className="h-10 w-auto! rounded-full text-sm md:hidden">
             <option value="attention">Needs attention first</option>
             <option value="recent">Newest first</option>
             <option value="name">Name A to Z</option>
@@ -152,21 +144,18 @@ export function ExamsListScreen() {
       )}
       {!error && data && total > 0 && (
         <div className={cn("flex flex-col gap-3 transition-opacity", loading && "opacity-60")} aria-busy={loading}>
-          <ExamTable exams={exams} sort={sort} onSort={(s) => { setSort(s); setPage(0); }} />
+          <ExamTable exams={exams} sort={sort} onSort={(s) => update({ sort: s.key, dir: s.dir })} onDeleted={refresh} />
           <div className="flex flex-col gap-3 md:hidden">
             {exams.map((exam) => (
-              <ExamCard key={exam.id} exam={exam} />
+              <ExamCard key={exam.id} exam={exam} onDeleted={refresh} />
             ))}
           </div>
           <Pagination
             total={total}
-            page={page}
-            pageSize={pageSize}
-            onPage={setPage}
-            onPageSize={(n) => {
-              setPageSize(n);
-              setPage(0);
-            }}
+            page={p.page - 1}
+            pageSize={p.size}
+            onPage={(n) => update({ page: n + 1 })}
+            onPageSize={(n) => update({ size: n })}
           />
         </div>
       )}
@@ -203,15 +192,40 @@ function progressOf(exam: TutorExamRow): { label: string; value: number; tone: s
   return {
     label: `${exam.submitted} of ${exam.studentTotal} submitted${exam.toMark ? ` · ${exam.toMark} to mark` : ""}`,
     value: exam.studentTotal ? (exam.submitted / exam.studentTotal) * 100 : 0,
-    tone: "bg-secondary",
+    // amber while something is waiting for the teacher, so it stands out down the column
+    tone: exam.toMark > 0 ? "bg-amber-line" : "bg-secondary",
   };
+}
+
+/**
+ * The table's progress column. A bar only where it says something: a draft with nothing approved and an exam
+ * that is fully marked get a short line instead of an empty or a full bar.
+ */
+function ProgressCell({ exam }: { exam: TutorExamRow }) {
+  if (exam.stage === "draft" && exam.approvedCount === 0) {
+    return (
+      <span className="text-xs font-bold text-muted">
+        {exam.questionCount === 0 ? "No questions yet" : `${plural(exam.questionCount, "question")}, none approved`}
+      </span>
+    );
+  }
+  if (exam.stage === "released") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-mint-deep">
+        <Check className="size-3.5" strokeWidth={3.5} aria-hidden />
+        All marked{exam.averagePercent != null ? ` · average ${Math.round(exam.averagePercent)}%` : ""}
+      </span>
+    );
+  }
+  const progress = progressOf(exam);
+  return <MiniProgress compact label={progress.label} value={progress.value} tone={progress.tone} />;
 }
 
 /** The one button on the row of an exam. */
 function action(exam: TutorExamRow) {
-  if (exam.stage === "draft") return { href: `/tutor/exams/${exam.id}`, label: "Continue editing", variant: "soft" as const };
-  if (exam.stage === "released") return { href: `/tutor/exams/${exam.id}/sessions`, label: "View results", variant: "secondary" as const };
-  return { href: `/tutor/exams/${exam.id}/sessions`, label: "Manage", variant: "dark" as const };
+  if (exam.stage === "draft") return { href: `/tutor/exams/${exam.id}`, label: "Continue editing", variant: "soft" as const, Icon: Pencil };
+  if (exam.stage === "released") return { href: `/tutor/exams/${exam.id}/sessions`, label: "View results", variant: "secondary" as const, Icon: ChartColumn };
+  return { href: `/tutor/exams/${exam.id}/sessions`, label: "Manage", variant: "dark" as const, Icon: Settings2 };
 }
 
 function SortHeader({ label, k, sort, onSort, className }: { label: string; k: ExamSort; sort: SortState; onSort: (s: SortState) => void; className?: string }) {
@@ -232,7 +246,7 @@ function SortHeader({ label, k, sort, onSort, className }: { label: string; k: E
 }
 
 /** Desktop view: one row per exam, with sortable columns. Phones get the cards below instead. */
-function ExamTable({ exams, sort, onSort }: { exams: TutorExamRow[]; sort: SortState; onSort: (s: SortState) => void }) {
+function ExamTable({ exams, sort, onSort, onDeleted }: { exams: TutorExamRow[]; sort: SortState; onSort: (s: SortState) => void; onDeleted: () => void }) {
   return (
     <Card className="hidden rounded-[26px] md:block">
       <table className="w-full border-collapse">
@@ -247,7 +261,7 @@ function ExamTable({ exams, sort, onSort }: { exams: TutorExamRow[]; sort: SortS
         </thead>
         <tbody>
           {exams.map((exam) => (
-            <ExamTableRow key={exam.id} exam={exam} />
+            <ExamTableRow key={exam.id} exam={exam} onDeleted={onDeleted} />
           ))}
         </tbody>
       </table>
@@ -255,9 +269,8 @@ function ExamTable({ exams, sort, onSort }: { exams: TutorExamRow[]; sort: SortS
   );
 }
 
-function ExamTableRow({ exam }: { exam: TutorExamRow }) {
+function ExamTableRow({ exam, onDeleted }: { exam: TutorExamRow; onDeleted: () => void }) {
   const stage = STAGE[exam.stage];
-  const progress = progressOf(exam);
   const act = action(exam);
   const open = exam.classes.filter((c) => c.status === "open").length;
   const href = exam.stage === "draft" ? `/tutor/exams/${exam.id}` : `/tutor/exams/${exam.id}/sessions`;
@@ -265,18 +278,13 @@ function ExamTableRow({ exam }: { exam: TutorExamRow }) {
   return (
     <tr className="border-t border-line transition-colors first:border-t-0 hover:bg-canvas/70">
       <td className="py-3.5 pl-5 pr-4">
-        <div className="flex items-center gap-3.5">
-          <TiltTile tone={stage.tile} className="size-11 rounded-[14px]">
-            <stage.Icon className="size-5" strokeWidth={2.3} aria-hidden />
-          </TiltTile>
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <Link href={href} className="text-[15px] font-black text-ink no-underline hover:text-secondary-dark">
-              {exam.title}
-            </Link>
-            <span className="text-[13px] font-bold text-muted">
-              {exam.timeLimitMinutes} min · {plural(exam.questionCount, "question")} · {plural(exam.totalMarks, "mark")}
-            </span>
-          </div>
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <Link href={href} className="text-[15px] font-black text-ink no-underline hover:text-secondary-dark">
+            {exam.title}
+          </Link>
+          <span className="text-[13px] font-bold text-muted">
+            {exam.timeLimitMinutes} min · {plural(exam.questionCount, "question")} · {plural(exam.totalMarks, "mark")}
+          </span>
         </div>
       </td>
       <td className="px-4 py-3.5">
@@ -294,16 +302,65 @@ function ExamTableRow({ exam }: { exam: TutorExamRow }) {
         )}
       </td>
       <td className="w-[210px] px-4 py-3.5">
-        <MiniProgress label={progress.label} value={progress.value} tone={progress.tone} />
+        <ProgressCell exam={exam} />
       </td>
       <td className="py-3.5 pl-4 pr-5">
-        <ButtonLink href={act.href} variant={act.variant} size="sm">{act.label}</ButtonLink>
+        <div className="flex items-center justify-end gap-1">
+        {exam.stage === "draft" && <DeleteDraft exam={exam} onDeleted={onDeleted} />}
+        <Link
+          href={act.href}
+          aria-label={`${act.label}: ${exam.title}`}
+          title={act.label}
+          className="grid size-9 shrink-0 place-items-center rounded-full text-secondary-dark no-underline transition hover:bg-secondary-soft hover:text-secondary-dark"
+        >
+          <act.Icon className="size-[18px]" strokeWidth={2.3} aria-hidden />
+        </Link>
+        </div>
       </td>
     </tr>
   );
 }
 
-function ExamCard({ exam }: { exam: TutorExamRow }) {
+/** A small bin button on a draft, with a confirmation. Only drafts can be deleted; published exams have been sat. */
+function DeleteDraft({ exam, onDeleted }: { exam: TutorExamRow; onDeleted: () => void }) {
+  const toast = useToast();
+  const [asking, setAsking] = useState(false);
+  const name = exam.title.trim() || "Untitled exam";
+
+  async function remove() {
+    try {
+      await tutorApi.deleteExam(exam.id);
+      forgetBuilder(exam.id);
+      toast("Draft deleted");
+      onDeleted();
+    } catch (e) {
+      toast(toApiError(e).message, "error");
+      onDeleted();
+    }
+    setAsking(false);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`Delete draft ${name}`}
+        title="Delete draft"
+        onClick={() => setAsking(true)}
+        className="grid size-9 shrink-0 place-items-center rounded-full text-muted transition hover:bg-rose hover:text-rose-ink"
+      >
+        <Trash2 className="size-[18px]" aria-hidden />
+      </button>
+      <ConfirmModal open={asking} onClose={() => setAsking(false)} title="Delete this draft?" confirmLabel="Delete draft" tone="dark" onConfirm={remove}>
+        <p>
+          &quot;{name}&quot; and its {plural(exam.questionCount, "question")} will be removed for good. This can&apos;t be undone.
+        </p>
+      </ConfirmModal>
+    </>
+  );
+}
+
+function ExamCard({ exam, onDeleted }: { exam: TutorExamRow; onDeleted: () => void }) {
   const stage = STAGE[exam.stage];
   const draft = exam.stage === "draft";
   const released = exam.stage === "released";
@@ -348,9 +405,12 @@ function ExamCard({ exam }: { exam: TutorExamRow }) {
       )}
 
       {draft ? (
-        <ButtonLink href={`/tutor/exams/${exam.id}`} variant="soft" size="sm" className="h-11 px-[18px]">
-          Continue editing
-        </ButtonLink>
+        <div className="flex items-center gap-1">
+          <DeleteDraft exam={exam} onDeleted={onDeleted} />
+          <ButtonLink href={`/tutor/exams/${exam.id}`} variant="soft" size="sm" className="h-11 px-[18px]">
+            Continue editing
+          </ButtonLink>
+        </div>
       ) : released ? (
         <ButtonLink href={`/tutor/exams/${exam.id}/sessions`} variant="secondary" size="sm" className="h-11 px-[18px]">
           View results

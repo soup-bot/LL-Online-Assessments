@@ -98,11 +98,11 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-3 rounded-[28px] border-2 border-dashed border-[#e0d9ce] bg-white p-8 text-center",
+        "flex flex-col items-center gap-3 rounded-[28px] border border-line bg-white p-8 text-center",
         className,
       )}
     >
-      <IconTile Icon={Icon} tone="bg-secondary-soft text-secondary" />
+      <IconTile Icon={Icon} tone="bg-chip text-muted" />
       <div className="flex flex-col gap-1">
         <h2 className="text-lg font-black">{title}</h2>
         {children && <p className="text-sm font-semibold text-muted">{children}</p>}

@@ -7,6 +7,7 @@ import { adminApi } from "@/lib/api-staff";
 import type { AdminClass, ClassInput, PersonLite, StudentChoice } from "@/lib/staff-types";
 import { useAsync } from "@/lib/hooks/useAsync";
 import { useDebounced } from "@/lib/hooks/useDebounced";
+import { useClampPage, useQueryState, useSearchText } from "@/lib/hooks/useQueryState";
 import { cn, plural } from "@/lib/utils";
 import { Field, PageHeader, Pagination, Select, inputClass } from "@/components/staff/bits";
 import { StaffMain } from "@/components/staff/StaffShell";
@@ -16,14 +17,14 @@ import { Button, Card, EmptyState, ErrorState, Notice, Skeleton, Spinner } from 
 const batchOf = (name: string) => name.split(",")[1]?.trim() ?? name;
 
 export function AdminClassesScreen() {
-  const [text, setText] = useState("");
-  const q = useDebounced(text.trim(), 300);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const [p, update] = useQueryState({ q: "", page: 1, size: 10 });
+  const [text, setText] = useSearchText(p.q, (q) => update({ q }, "replace"));
+  const q = p.q;
   // The class on the right: kept here (not looked up in the list) so it survives paging and searching.
   const [selected, setSelected] = useState<AdminClass | "new" | null>(null);
 
-  const { data, error, loading, reload, refresh } = useAsync(() => adminApi.classes({ q, page: page + 1, perPage: pageSize }), [q, page, pageSize]);
+  const { data, error, loading, reload, refresh } = useAsync(() => adminApi.classes({ q, page: p.page, perPage: p.size }), [q, p.page, p.size]);
+  useClampPage(data?.meta.total, p.page, p.size, () => update({ page: 1 }, "replace"));
 
   // First time in, open the first class.
   useEffect(() => {
@@ -55,10 +56,7 @@ export function AdminClassesScreen() {
                 type="search"
                 value={text}
                 placeholder="Search classes"
-                onChange={(e) => {
-                  setText(e.target.value);
-                  setPage(0);
-                }}
+                onChange={(e) => setText(e.target.value)}
                 className={cn(inputClass, "h-11 rounded-full pl-10 pr-4 text-sm")}
               />
             </div>
@@ -80,14 +78,11 @@ export function AdminClassesScreen() {
             ))}
             <Pagination
               total={data.meta.total}
-              page={page}
-              pageSize={pageSize}
+              page={p.page - 1}
+              pageSize={p.size}
               sizes={[10, 25, 50]}
-              onPage={setPage}
-              onPageSize={(n) => {
-                setPageSize(n);
-                setPage(0);
-              }}
+              onPage={(n) => update({ page: n + 1 })}
+              onPageSize={(n) => update({ size: n })}
             />
           </nav>
 

@@ -3,15 +3,15 @@
 import { memo, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Check, Lock, Search } from "lucide-react";
+import { Check, Eye, EyeOff, Lock, Pencil, Search } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { tutorApi } from "@/lib/api-staff";
 import type { ClassCard, ExamSessions as ExamSessionsData, LiveData, LiveFilter, LiveRow, LiveState } from "@/lib/staff-types";
 import { useAsync } from "@/lib/hooks/useAsync";
-import { useDebounced } from "@/lib/hooks/useDebounced";
+import { useClampPage, useQueryState, useSearchText } from "@/lib/hooks/useQueryState";
 import type { SubmitReason } from "@/lib/types";
 import { cn, formatDate, formatTime, plural } from "@/lib/utils";
-import { BackLink, ConfirmModal, FilterPill, MiniProgress, Pagination, Select, StatusChip, inputClass } from "@/components/staff/bits";
+import { BackLink, ConfirmModal, FilterPill, FilterTabs, Pagination, ProgressRing, Select, StatusChip, inputClass } from "@/components/staff/bits";
 import { StaffMain } from "@/components/staff/StaffShell";
 import { useToast } from "@/components/staff/Toast";
 import { Button, ButtonLink, Card, Chip, EmptyState, ErrorState, GradeTile, Notice, Skeleton } from "@/components/ui";
@@ -35,7 +35,9 @@ export function ExamSessionsScreen() {
 }
 
 function SessionsContent({ data, onChange }: { data: ExamSessionsData; onChange: () => void }) {
-  const [selected, setSelected] = useState<number | null>(null);
+  // The batch you are looking at is in the address (?batch=12), so a refresh or a link opens the same one.
+  const [p, update] = useQueryState({ batch: 0, state: "all", q: "", page: 1, size: 25 });
+  const selected = p.batch || null;
   // Open batches first, so the one that needs watching is already selected.
   const active = data.classes.find((c) => c.sessionId === selected) ?? data.classes.find((c) => c.status === "open") ?? data.classes[0];
   const published = data.exam.status === "published";
@@ -88,7 +90,7 @@ function SessionsContent({ data, onChange }: { data: ExamSessionsData; onChange:
           </div>
 
           <div className="flex flex-col items-stretch gap-5 md:flex-row md:items-start">
-            <BatchNav classes={data.classes} activeId={active?.sessionId} onSelect={setSelected} />
+            <BatchNav classes={data.classes} activeId={active?.sessionId} onSelect={(id) => update({ batch: id, state: "all", q: "", page: 1 })} />
             {active && <BatchDetail key={active.sessionId} card={active} canEdit={data.canEdit && published} onChange={onChange} />}
           </div>
         </>
@@ -189,18 +191,18 @@ function BatchDetail({ card, canEdit, onChange }: { card: ClassCard; canEdit: bo
   const open = card.status === "open";
   const closed = card.status === "closed";
   const released = card.releasedAt != null;
-  const chip = released ? { tone: "mint" as ChipTone, label: "Results released" } : SESSION_CHIP[card.status];
+  const chip = released ? { tone: "sky" as ChipTone, label: "Results released" } : SESSION_CHIP[card.status];
   const canRelease = closed && card.toMark === 0 && !released;
   // The server searches, filters and pages the students, so a 100-student class sends one page at a time.
-  const [filter, setFilter] = useState<LiveFilter>("all");
-  const [text, setText] = useState("");
-  const search = useDebounced(text.trim(), 300);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
+  // The filter, search and page are in the address too (?state=to_mark&q=ibra&page=2).
+  const [p, update] = useQueryState({ batch: 0, state: "all", q: "", page: 1, size: 25 });
+  const [text, setText] = useSearchText(p.q, (q) => update({ q }, "replace"));
+  const filter = p.state as LiveFilter;
   const live = useAsync(
-    () => tutorApi.live(card.sessionId, { state: filter, q: search, page: page + 1, perPage: pageSize }),
-    [card.sessionId, filter, search, page, pageSize],
+    () => tutorApi.live(card.sessionId, { state: filter, q: p.q, page: p.page, perPage: p.size }),
+    [card.sessionId, filter, p.q, p.page, p.size],
   );
+  useClampPage(live.data?.meta.total, p.page, p.size, () => update({ page: 1 }, "replace"));
 
   // Keep the list fresh while the teacher watches an exam.
   useEffect(() => {
@@ -273,12 +275,14 @@ function BatchDetail({ card, canEdit, onChange }: { card: ClassCard; canEdit: bo
               </span>
             ) : (
               <>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-                  <span className="text-sm font-black">Release results</span>
-                  <Step done={closed}>Close the exam</Step>
-                  <Step done={closed && card.toMark === 0} warn={card.toMark > 0}>
-                    {card.toMark > 0 ? `Mark every submission (${card.toMark} left)` : "Mark every submission"}
-                  </Step>
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm font-black">To release results, first:</span>
+                  <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+                    <Step n={1} done={closed}>Close the exam</Step>
+                    <Step n={2} done={closed && card.toMark === 0} warn={card.toMark > 0}>
+                      {card.toMark > 0 ? `Mark every submission (${card.toMark} left)` : "Mark every submission"}
+                    </Step>
+                  </div>
                 </div>
                 {canEdit && (
                   <Button size="md" disabled={!canRelease} onClick={() => setAsk("release")}>
@@ -299,22 +303,13 @@ function BatchDetail({ card, canEdit, onChange }: { card: ClassCard; canEdit: bo
           canEdit={canEdit}
           busy={live.loading}
           filter={filter}
-          onFilter={(f) => {
-            setFilter(f);
-            setPage(0);
-          }}
+          onFilter={(f) => update({ state: f })}
           text={text}
-          onText={(t) => {
-            setText(t);
-            setPage(0);
-          }}
-          page={page}
-          pageSize={pageSize}
-          onPage={setPage}
-          onPageSize={(n) => {
-            setPageSize(n);
-            setPage(0);
-          }}
+          onText={setText}
+          page={p.page - 1}
+          pageSize={p.size}
+          onPage={(n) => update({ page: n + 1 })}
+          onPageSize={(n) => update({ size: n })}
         />
       )}
 
@@ -364,9 +359,9 @@ function detailOf(row: LiveRow): string {
 }
 
 function scoreOf(row: LiveRow): string {
-  if (row.state === "marked") return `${row.score ?? 0} / ${row.total} · ${row.grade}`;
-  if (row.state === "to_mark") return `${row.objectiveScore ?? 0} / ${row.objectiveTotal} auto`;
-  if (row.state === "not_attempted") return "Not attempted";
+  // The grade badge sits beside it, so the letter isn't repeated here.
+  if (row.state === "marked") return `${row.score ?? 0}/${row.total}`;
+  if (row.state === "to_mark") return `${row.objectiveScore ?? 0}/${row.objectiveTotal} auto`;
   return "—";
 }
 
@@ -418,11 +413,13 @@ function LiveList({ data, canEdit, busy, filter, onFilter, text, onText, page, p
             className={cn(inputClass, "h-10 rounded-full pl-10 pr-4 text-sm")}
           />
         </div>
-        {pills.map((p) => (
-          <FilterPill key={p.id} active={filter === p.id} onClick={() => onFilter(p.id)}>
-            {p.label} · {counts[p.id]}
-          </FilterPill>
-        ))}
+        <FilterTabs label="Filter students">
+          {pills.map((p) => (
+            <FilterPill key={p.id} active={filter === p.id} onClick={() => onFilter(p.id)}>
+              {p.label} · {counts[p.id]}
+            </FilterPill>
+          ))}
+        </FilterTabs>
       </div>
 
       {counts.all === 0 ? (
@@ -455,39 +452,48 @@ function RowBase({ row, canEdit }: { row: LiveRow; canEdit: boolean }) {
       : null;
 
   return (
-    <li className="flex flex-wrap items-center gap-x-[18px] gap-y-3 rounded-[22px] border border-[#f0ece5] bg-canvas p-3.5">
+    <li className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-[22px] border border-[#f0ece5] bg-canvas p-3.5 md:flex-nowrap">
       <span aria-hidden className="grid size-11 shrink-0 place-items-center rounded-full bg-mint text-sm font-black text-mint-deep">
         {row.initials}
       </span>
       <div className="flex min-w-0 flex-1 basis-40 flex-col gap-0.5">
-        <span className="text-base font-black">{row.name}</span>
-        <span className="text-[13px] font-bold text-muted">{detailOf(row)}</span>
+        <span className="truncate text-base font-black">{row.name}</span>
+        <span className="truncate text-[13px] font-bold text-muted">{detailOf(row)}</span>
       </div>
       {started && (
-        <div className="w-[150px]">
-          <MiniProgress label={`${row.answered} of ${row.questionCount} answered`} value={row.questionCount ? (row.answered / row.questionCount) * 100 : 0} />
-        </div>
+        <ProgressRing
+          value={row.questionCount ? (row.answered / row.questionCount) * 100 : 0}
+          text={`${row.answered}/${row.questionCount}`}
+          label={`${row.answered} of ${row.questionCount} answered`}
+        />
       )}
-      {started && (
-        <Chip tone={row.violations > 0 ? "peach" : "neutral"} size="md">
-          Left window: {row.violations}
-        </Chip>
+      {/* Only worth a mark when it happened; "0 times" is the normal case. */}
+      {started && row.violations > 0 && (
+        <span title={`Left the exam window ${plural(row.violations, "time")}`} className="inline-flex shrink-0 items-center gap-1 rounded-full bg-peach px-2.5 py-1 text-xs font-black text-peach-ink">
+          <EyeOff className="size-3.5" strokeWidth={2.6} aria-hidden />
+          <span aria-hidden>{row.violations}</span>
+          <span className="sr-only">Left the exam window {plural(row.violations, "time")}</span>
+        </span>
       )}
       <StatusChip tone={chip.tone}>{chip.label}</StatusChip>
-      <span className="flex min-w-[90px] items-center justify-end gap-2 text-right text-[15px] font-black">
+      <span className="flex min-w-[96px] shrink-0 items-center justify-end gap-2 whitespace-nowrap text-right text-[15px] font-black">
         {row.grade && <GradeTile grade={row.grade} size="sm" className="size-8 rounded-[10px] text-base" />}
         {scoreOf(row)}
       </span>
-      {action && (
+      {action ? (
         <Link
           href={action.href}
+          aria-label={`${action.label} ${row.name}`}
+          title={action.label}
           className={cn(
-            "flex h-[42px] items-center rounded-full px-4 text-sm font-black no-underline transition active:scale-95",
-            action.primary ? "bg-squiggly bg-brand text-white hover:bg-brand-dark hover:text-white" : "border-2 border-line-input bg-white text-ink hover:bg-paper hover:text-ink",
+            "grid size-10 shrink-0 place-items-center rounded-full no-underline transition active:scale-95",
+            action.primary ? "bg-squiggly bg-brand text-white hover:bg-brand-dark hover:text-white" : "text-secondary-dark hover:bg-secondary-soft hover:text-secondary-dark",
           )}
         >
-          {action.label}
+          {action.primary ? <Pencil className="size-[18px]" strokeWidth={2.4} aria-hidden /> : <Eye className="size-[18px]" strokeWidth={2.3} aria-hidden />}
         </Link>
+      ) : (
+        <span aria-hidden className="hidden size-10 shrink-0 md:block" />
       )}
     </li>
   );
@@ -495,17 +501,17 @@ function RowBase({ row, canEdit }: { row: LiveRow; canEdit: boolean }) {
 
 /* ------------------------------------------------------------------- release */
 
-function Step({ done, warn, children }: { done: boolean; warn?: boolean; children: React.ReactNode }) {
+function Step({ n, done, warn, children }: { n: number; done: boolean; warn?: boolean; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2.5 text-sm font-extrabold">
       <span
         aria-hidden
         className={cn(
-          "grid size-[26px] shrink-0 place-items-center rounded-full border-2",
-          done ? "border-mint-ink bg-mint-ink text-white" : warn ? "border-amber-line bg-amber" : "border-[#d8d2c8]",
+          "grid size-[26px] shrink-0 place-items-center rounded-full border-2 text-xs font-black",
+          done ? "border-mint-ink bg-mint-ink text-white" : warn ? "border-amber-line bg-amber text-amber-ink" : "border-[#d8d2c8] text-muted",
         )}
       >
-        {done && <Check className="size-3.5" strokeWidth={4} />}
+        {done ? <Check className="size-3.5" strokeWidth={4} /> : n}
       </span>
       {children}
     </div>

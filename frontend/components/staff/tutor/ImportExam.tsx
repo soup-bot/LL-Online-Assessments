@@ -92,13 +92,20 @@ function ImportContent({ examId, untitled }: { examId: number; untitled: boolean
         </p>
       </div>
 
-      <div className="flex flex-wrap items-start gap-5">
-        <div className="flex min-w-0 flex-[1_1_420px] flex-col gap-4">
+      {/* One column, top to bottom, so the steps read 1, 2, 3 in order. */}
+      <div className="flex max-w-[820px] flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <Card className="flex flex-col gap-3.5 p-[22px]">
             <Step n={1} title="Copy this prompt" />
-            <pre className="max-h-[300px] overflow-auto whitespace-pre-wrap rounded-[18px] bg-paper p-4 font-mono text-xs leading-relaxed text-ink-2">
-              {IMPORT_PROMPT}
-            </pre>
+            <p className="text-[15px] font-semibold leading-relaxed text-ink-2">
+              It only describes the format, so the AI can answer in a layout this page understands. What it works from is up to you.
+            </p>
+            <details className="group">
+              <summary className="cursor-pointer text-sm font-extrabold text-secondary underline-offset-2 hover:underline">Show the prompt</summary>
+              <pre className="mt-2.5 max-h-[300px] overflow-auto whitespace-pre-wrap rounded-[18px] bg-paper p-4 font-mono text-xs leading-relaxed text-ink-2">
+                {IMPORT_PROMPT}
+              </pre>
+            </details>
             <Button variant={copied ? "soft" : "primary"} onClick={() => void copy()} className={cn(copied && "bg-mint text-mint-deep hover:bg-mint")}>
               {copied ? <Check className="size-5" strokeWidth={3} aria-hidden /> : <Copy className="size-5" aria-hidden />}
               {copied ? "Copied" : "Copy prompt"}
@@ -108,11 +115,11 @@ function ImportContent({ examId, untitled }: { examId: number; untitled: boolean
           <Card className="flex flex-col gap-3 p-[22px]">
             <Step n={2} title="Paste it into your AI tool" />
             <p className="text-[15px] font-semibold leading-relaxed text-ink-2">
-              Add your exam underneath: attach the Word or PDF file, paste the text, or just paste your notes and say how many questions of
-              each type you want.
+              Then say what you want it to make. Attach an existing exam and ask it to convert it, or paste notes and ask it to write, say,
+              10 multiple choice and 2 written questions. You decide what it works from.
             </p>
             <div className="flex flex-wrap gap-2">
-              {["Word or PDF exam", "Typed questions", "Lesson notes", "Photo of a paper"].map((t) => (
+              {["Convert my Word or PDF exam", "Convert typed questions", "Write questions from notes", "Photo of a paper"].map((t) => (
                 <span key={t} className="rounded-full bg-chip px-3 py-1.5 text-[13px] font-extrabold">
                   {t}
                 </span>
@@ -121,7 +128,7 @@ function ImportContent({ examId, untitled }: { examId: number; untitled: boolean
           </Card>
         </div>
 
-        <Card className="flex min-w-0 flex-[1_1_460px] flex-col gap-3.5 p-[22px]">
+        <Card className="flex min-w-0 flex-col gap-3.5 p-[22px]">
           <Step n={3} title="Paste the result here" />
           <label className="flex flex-col gap-1.5">
             <span className="sr-only">AI result</span>

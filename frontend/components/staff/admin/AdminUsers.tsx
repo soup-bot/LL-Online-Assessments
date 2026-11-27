@@ -1,14 +1,14 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Plus, Search } from "lucide-react";
+import { Pencil, Plus, Search } from "lucide-react";
 import { toApiError } from "@/lib/api";
 import { adminApi } from "@/lib/api-staff";
 import type { UserInput, UserRole, UserRow } from "@/lib/staff-types";
 import { useAsync } from "@/lib/hooks/useAsync";
-import { useDebounced } from "@/lib/hooks/useDebounced";
+import { useClampPage, useQueryState, useSearchText } from "@/lib/hooks/useQueryState";
 import { cn } from "@/lib/utils";
-import { Field, FilterPill, PageHeader, Pagination, Select, StatusChip, inputClass } from "@/components/staff/bits";
+import { Field, FilterPill, FilterTabs, PageHeader, Pagination, Select, StatusChip, inputClass } from "@/components/staff/bits";
 import { StaffMain } from "@/components/staff/StaffShell";
 import { useToast } from "@/components/staff/Toast";
 import { Button, Card, EmptyState, ErrorState, Modal, Notice, Skeleton } from "@/components/ui";
@@ -23,18 +23,17 @@ const ROLE: Record<UserRole, { label: string; tone: ChipTone; avatar: string }> 
 type Filter = "all" | UserRole;
 
 export function AdminUsersScreen() {
-  const [filter, setFilter] = useState<Filter>("all");
-  const [text, setText] = useState("");
-  const q = useDebounced(text.trim(), 300);
-  const [page, setPage] = useState(0);
-  const [pageSize, setPageSize] = useState(25);
+  const [p, update] = useQueryState({ role: "all", q: "", page: 1, size: 25 });
+  const [text, setText] = useSearchText(p.q, (q) => update({ q }, "replace"));
+  const filter = p.role as Filter;
   const [editing, setEditing] = useState<UserRow | "new" | null>(null);
 
   // The server searches, filters and pages, so a school with hundreds of students sends one page at a time.
   const { data, error, loading, reload, refresh } = useAsync(
-    () => adminApi.users({ role: filter === "all" ? undefined : filter, q, page: page + 1, perPage: pageSize }),
-    [filter, q, page, pageSize],
+    () => adminApi.users({ role: filter === "all" ? undefined : filter, q: p.q, page: p.page, perPage: p.size }),
+    [filter, p.q, p.page, p.size],
   );
+  useClampPage(data?.meta.total, p.page, p.size, () => update({ page: 1 }, "replace"));
 
   return (
     <StaffMain>
@@ -49,32 +48,24 @@ export function AdminUsersScreen() {
       />
       <div className="flex flex-wrap items-center gap-2.5">
         <label className="sr-only" htmlFor="user-search">Search users</label>
-        <div className="relative min-w-0 max-w-[380px] flex-1 basis-64">
-          <Search aria-hidden className="pointer-events-none absolute left-5 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={3} />
+        <div className="relative min-w-0 flex-1 basis-56 sm:w-72 sm:flex-none">
+          <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-subtle" strokeWidth={3} />
           <input
             id="user-search"
             type="search"
             placeholder="Search by name or email"
             value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              setPage(0);
-            }}
-            className={cn(inputClass, "h-12 rounded-full pl-11 pr-5")}
+            onChange={(e) => setText(e.target.value)}
+            className={cn(inputClass, "h-11 rounded-full pl-10 pr-4 text-sm")}
           />
         </div>
-        {(["all", "tutor", "student", "admin"] as const).map((f) => (
-          <FilterPill
-            key={f}
-            active={filter === f}
-            onClick={() => {
-              setFilter(f);
-              setPage(0);
-            }}
-          >
-            {f === "all" ? "Everyone" : `${ROLE[f].label}s`}
-          </FilterPill>
-        ))}
+        <FilterTabs label="Filter by role">
+          {(["all", "tutor", "student", "admin"] as const).map((f) => (
+            <FilterPill key={f} active={filter === f} onClick={() => update({ role: f })}>
+              {f === "all" ? "Everyone" : `${ROLE[f].label}s`}
+            </FilterPill>
+          ))}
+        </FilterTabs>
       </div>
 
       {error && <ErrorState code={error.code} message={error.message} onRetry={reload} backHref="/login" backLabel="Back to sign in" />}
@@ -82,7 +73,7 @@ export function AdminUsersScreen() {
       {!error && data && data.meta.total === 0 && <EmptyState title="No one matches">Try a different search or filter.</EmptyState>}
       {!error && data && data.meta.total > 0 && (
         <div className={cn("flex flex-col gap-3 transition-opacity", loading && "opacity-60")} aria-busy={loading}>
-          <Card className="flex flex-col p-2.5">
+          <Card className="flex flex-col p-2.5 md:hidden">
             {data.users.map((u) => (
               <div key={u.id} className="flex min-h-16 flex-wrap items-center gap-x-4 gap-y-2 rounded-[20px] px-3.5 py-2.5 hover:bg-canvas">
                 <span aria-hidden className={cn("grid size-11 shrink-0 place-items-center rounded-full text-sm font-black", ROLE[u.role].avatar, !u.isActive && "opacity-50")}>
@@ -103,16 +94,14 @@ export function AdminUsersScreen() {
               </div>
             ))}
           </Card>
+          <UserTable users={data.users} onEdit={setEditing} />
           <Pagination
             total={data.meta.total}
-            page={page}
-            pageSize={pageSize}
+            page={p.page - 1}
+            pageSize={p.size}
             sizes={[10, 25, 50, 100]}
-            onPage={setPage}
-            onPageSize={(n) => {
-              setPageSize(n);
-              setPage(0);
-            }}
+            onPage={(n) => update({ page: n + 1 })}
+            onPageSize={(n) => update({ size: n })}
           />
         </div>
       )}
@@ -188,5 +177,58 @@ function UserDialog({ user, onClose, onSaved }: { user: UserRow | null; onClose:
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Desktop view: one row per person. Phones get the cards above instead. */
+function UserTable({ users, onEdit }: { users: UserRow[]; onEdit: (u: UserRow) => void }) {
+  return (
+    <Card className="hidden rounded-[26px] md:block">
+      <table className="w-full border-collapse">
+        <thead className="border-b border-line bg-canvas/60">
+          <tr>
+            <th scope="col" className="pl-5 pr-4 py-3 text-left text-xs font-black uppercase tracking-wider text-muted" >User</th>
+            <th scope="col" className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-muted" >Role</th>
+            <th scope="col" className="px-4 py-3 text-left text-xs font-black uppercase tracking-wider text-muted" >Classes</th>
+            <th scope="col" className="w-px px-5 py-3"><span className="sr-only">Action</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {users.map((u) => (
+            <tr key={u.id} className="border-t border-line transition-colors first:border-t-0 hover:bg-canvas/70">
+              <td className="py-3 pl-5 pr-4">
+                <div className="flex items-center gap-3.5">
+                  <span aria-hidden className={cn("grid size-10 shrink-0 place-items-center rounded-full text-sm font-black", ROLE[u.role].avatar, !u.isActive && "opacity-50")}>
+                    {u.initials}
+                  </span>
+                  <div className="flex min-w-0 flex-col">
+                    <span className={cn("text-[15px] font-black", !u.isActive && "text-muted")}>{u.name}</span>
+                    <span className="truncate text-[13px] font-bold text-muted">{u.email}</span>
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusChip tone={ROLE[u.role].tone}>{ROLE[u.role].label}</StatusChip>
+                  {!u.isActive && <StatusChip tone="neutral">Inactive</StatusChip>}
+                </div>
+              </td>
+              <td className="px-4 py-3 text-sm font-bold text-ink-2">{u.classes || <span className="text-subtle">—</span>}</td>
+              <td className="py-3 pl-4 pr-5">
+                <button
+                  type="button"
+                  onClick={() => onEdit(u)}
+                  aria-label={`Edit ${u.name}`}
+                  title="Edit"
+                  className="grid size-9 place-items-center rounded-full text-secondary-dark transition hover:bg-secondary-soft"
+                >
+                  <Pencil className="size-[18px]" strokeWidth={2.3} aria-hidden />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
   );
 }

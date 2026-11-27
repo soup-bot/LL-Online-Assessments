@@ -10,6 +10,7 @@ import { plural } from "@/lib/utils";
 import { AccountButton, StudentShell } from "@/components/student/StudentShell";
 import { LiveClock } from "@/components/student/LiveClock";
 import { ButtonLink, Card, Chip, EmptyState, ErrorState, GradeTile, Skeleton } from "@/components/ui";
+import { PingDot } from "@/components/ui/PingDot";
 
 export function StudentHomeScreen() {
   const { data, error, loading, reload, refresh } = useAsync(() => api.student.home(), []);
@@ -76,7 +77,7 @@ function OpenExamCard({ card }: { card: ExamCard }) {
   return (
     <Card className="flex flex-col gap-3.5 p-5 md:gap-5 md:rounded-[30px] md:p-8">
       <Chip tone="mint" size="lg" className="self-start">
-        <span className="size-[7px] rounded-full bg-mint-ink md:size-2" aria-hidden />
+        <PingDot className="size-[7px] md:size-2" />
         Open now
       </Chip>
 

@@ -246,7 +246,7 @@ function MarkContent({ data }: { data: MarkingData }) {
             <label className="flex flex-col gap-1.5 text-sm font-black">
               Overall comment
               <textarea
-                className={cn(textareaClass, "border-0 bg-[#2c3242] text-sm text-white placeholder:text-[#9aa0ae] focus:ring-secondary-ring/40")}
+                className={cn(textareaClass, "border-0! focus:border-0! bg-[#2c3242]! text-sm text-white! placeholder:text-[#9aa0ae]! focus:bg-[#363d51]! focus:ring-0 disabled:bg-[#2c3242]! disabled:text-[#9aa0ae]!")}
                 rows={2}
                 value={overall}
                 disabled={!editable}
